@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 ### OAuth 2.0
 - New **OAuth 2.0** auth type for requests, folders and collections
