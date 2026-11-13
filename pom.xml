@@ -22,6 +22,8 @@
         <exec.mainClass>${main.class}</exec.mainClass>
         <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss 'UTC'</maven.build.timestamp.format>
         <build.timestamp>${maven.build.timestamp}</build.timestamp>
+        <!-- application icon for jpackage; Windows and macOS profiles below switch to .ico / .icns -->
+        <jpackage.icon>${project.basedir}/src/main/jpackage/postfx.png</jpackage.icon>
     </properties>
 
     <dependencies>
@@ -160,6 +162,22 @@
     </build>
 
     <profiles>
+        <!-- jpackage icon format per operating system -->
+        <profile>
+            <id>icon-windows</id>
+            <activation><os><family>windows</family></os></activation>
+            <properties>
+                <jpackage.icon>${project.basedir}/src/main/jpackage/postfx.ico</jpackage.icon>
+            </properties>
+        </profile>
+        <profile>
+            <id>icon-mac</id>
+            <activation><os><family>mac</family></os></activation>
+            <properties>
+                <jpackage.icon>${project.basedir}/src/main/jpackage/postfx.icns</jpackage.icon>
+            </properties>
+        </profile>
+
         <!-- Git commit information for the About box (io/postfx/git.properties).
              Active once the repository has at least one commit; otherwise the About box shows "unknown". -->
         <profile>
@@ -308,6 +326,8 @@
                                         <argument>--strip-debug --no-man-pages --no-header-files</argument>
                                         <argument>--java-options</argument>
                                         <argument>-Dpolyglot.engine.WarnInterpreterOnly=false</argument>
+                                        <argument>--icon</argument>
+                                        <argument>${jpackage.icon}</argument>
                                         <argument>--add-launcher</argument>
                                         <argument>postfx-cli=${project.basedir}/src/main/jpackage/cli-launcher.properties</argument>
                                     </arguments>

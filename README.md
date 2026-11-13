@@ -1,3 +1,5 @@
+<img src="src/main/resources/io/postfx/ui/icons/postfx-128.png" alt="PostFX" width="96" align="right">
+
 # PostFX
 
 An API client and test runner built with **Java 21 + OpenJFX**, compatible with Postman collections and scripts.

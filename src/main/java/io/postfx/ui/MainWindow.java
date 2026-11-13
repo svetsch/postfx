@@ -106,6 +106,7 @@ public class MainWindow {
         dragAndDropImport();
 
         stage.setTitle("PostFX " + io.postfx.BuildInfo.shortVersion() + " — API client & test runner");
+        AppIcons.apply(stage);
         stage.setScene(scene);
         openWelcome();
         if (firstRun) {
@@ -436,6 +437,8 @@ public class MainWindow {
     private Node welcome() {
         Label title = new Label("PostFX");
         title.getStyleClass().add("welcome-title");
+        title.setGraphic(AppIcons.view(56));
+        title.setGraphicTextGap(14);
         Label subtitle = new Label("Build, test and chain API requests. Postman compatible. Exports to Java tests.");
         subtitle.getStyleClass().add("welcome-subtitle");
 

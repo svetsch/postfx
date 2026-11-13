@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Application icon: window title bars, welcome page, About box, and the Windows / macOS / Linux native launchers
+
 ## 0.6.0
 
 ### OAuth 2.0

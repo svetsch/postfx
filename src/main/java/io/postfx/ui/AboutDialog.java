@@ -27,6 +27,8 @@ public final class AboutDialog {
 
         Label name = new Label("PostFX");
         name.getStyleClass().add("welcome-title");
+        name.setGraphic(AppIcons.view(64));
+        name.setGraphicTextGap(14);
         Label version = new Label("Version " + BuildInfo.shortVersion());
         version.getStyleClass().add("about-version");
         Label tagline = new Label("API client and test runner — Postman compatible collections and scripts,\n"
@@ -53,6 +55,7 @@ public final class AboutDialog {
 
         Dialog<ButtonType> d = new Dialog<>();
         if (Dialogs.owner != null) d.initOwner(Dialogs.owner);
+        AppIcons.apply(d.getDialogPane().getScene().getWindow());
         d.setTitle("About PostFX");
         d.getDialogPane().setContent(box);
         ButtonType copy = new ButtonType("Copy details", ButtonBar.ButtonData.LEFT);

@@ -52,6 +52,7 @@ public final class Dialogs {
 
     private static <T extends Dialog<?>> T own(T d) {
         if (owner != null) d.initOwner(owner);
+        AppIcons.apply(d.getDialogPane().getScene().getWindow());
         return d;
     }
 

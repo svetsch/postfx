@@ -61,6 +61,7 @@ public final class HelpWindow {
         if (stage == null) {
             stage = new Stage();
             stage.setTitle("PostFX Help");
+            AppIcons.apply(stage);
             toc = new ListView<>();
             toc.getItems().setAll(SECTIONS.keySet());
             ScrollPane content = new ScrollPane();
