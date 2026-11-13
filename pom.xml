@@ -6,7 +6,7 @@
 
     <groupId>io.postfx</groupId>
     <artifactId>postfx</artifactId>
-    <version>0.6.0</version>
+    <version>0.6.1</version>
     <name>PostFX</name>
     <description>API client and test runner (Postman compatible) built with OpenJFX</description>
 

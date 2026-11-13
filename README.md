@@ -82,8 +82,8 @@ mvn exec:java -Dexec.classpathScope=test -Dexec.mainClass=io.postfx.UiSmoke -Dex
 To publish a release, set the version in `pom.xml`, add a section to `CHANGELOG.md`, then push a matching tag:
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+git tag v0.6.1
+git push origin v0.6.1
 ```
 
 The workflow checks that the tag matches the pom version and creates the GitHub Release with the release notes from the changelog and the Windows native archive (`postfx-<version>-windows-x64.zip`).
