@@ -1,23 +1,46 @@
 package io.postfx.ui;
 
+import io.postfx.engine.OAuth2Client;
+import io.postfx.engine.VariableContext;
 import io.postfx.model.Auth;
 import io.postfx.model.AuthType;
+import io.postfx.model.OAuth2;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputControl;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import javafx.util.StringConverter;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Editor for request / folder / collection authorization. */
-public class AuthEditor extends VBox {
+/** Editor for request / folder / collection authorization, including OAuth 2.0 token management. */
+public class AuthEditor extends ScrollPane {
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
+    private static final List<String> GRANTS = List.of(OAuth2.AUTHORIZATION_CODE, OAuth2.AUTHORIZATION_CODE_PKCE, OAuth2.IMPLICIT,
+            OAuth2.PASSWORD, OAuth2.CLIENT_CREDENTIALS);
+
+    private final VBox content = new VBox(10);
     private final ComboBox<AuthType> type = new ComboBox<>();
     private final GridPane form = new GridPane();
     private final Label explanation = new Label();
@@ -25,17 +48,30 @@ public class AuthEditor extends VBox {
     private Runnable onChange = () -> {};
     private final boolean allowInherit;
     private Supplier<String> inheritedDescription = () -> "";
+    private AppContext ctx;
+    private Supplier<VariableContext> variables = VariableContext::new;
+
+    // OAuth 2.0 token widgets (kept to update them after a token request)
+    private final TextArea tokenArea = new TextArea();
+    private final Label tokenInfo = new Label();
+    private final Label oauthStatus = new Label();
+    private final Button getToken = new Button("Get New Access Token");
+    private final Button refreshToken = new Button("Refresh");
+    private final Button clearToken = new Button("Clear");
+    private final Button cancelLogin = new Button("Cancel login");
+    private OAuth2Client pendingClient;
 
     public AuthEditor(boolean allowInherit) {
-        super(10);
         this.allowInherit = allowInherit;
-        setPadding(new Insets(10));
+        setFitToWidth(true);
+        content.setPadding(new Insets(10));
+        setContent(content);
         for (AuthType t : AuthType.values()) if (allowInherit || t != AuthType.INHERIT) type.getItems().add(t);
         explanation.getStyleClass().add("hint");
         explanation.setWrapText(true);
         form.setHgap(10);
         form.setVgap(8);
-        ColumnConstraints c1 = new ColumnConstraints(120);
+        ColumnConstraints c1 = new ColumnConstraints(150);
         ColumnConstraints c2 = new ColumnConstraints();
         c2.setHgrow(Priority.ALWAYS);
         form.getColumnConstraints().addAll(c1, c2);
@@ -45,7 +81,32 @@ public class AuthEditor extends VBox {
             render();
             onChange.run();
         });
-        getChildren().addAll(new Label("Type"), type, explanation, form);
+        tokenArea.setWrapText(true);
+        tokenArea.setPrefRowCount(3);
+        tokenArea.getStyleClass().add("mono");
+        tokenArea.setPromptText("No token yet: click 'Get New Access Token', or paste a token here");
+        tokenInfo.getStyleClass().add("hint");
+        oauthStatus.setWrapText(true);
+        getToken.getStyleClass().add("send-button");
+        getToken.setOnAction(e -> requestToken(false));
+        refreshToken.setTooltip(new Tooltip("Use the refresh token to get a new access token"));
+        refreshToken.setOnAction(e -> requestToken(true));
+        clearToken.setOnAction(e -> {
+            auth.oauth2.clearToken();
+            showToken();
+            onChange.run();
+        });
+        cancelLogin.setVisible(false);
+        cancelLogin.setOnAction(e -> {
+            if (pendingClient != null) pendingClient.cancelPending();
+        });
+        content.getChildren().addAll(new Label("Type"), type, explanation, form);
+    }
+
+    /** Gives access to the browser, background threads and variables (needed for OAuth 2.0). */
+    public void setContext(AppContext ctx, Supplier<VariableContext> variables) {
+        this.ctx = ctx;
+        this.variables = variables;
     }
 
     public void setInheritedDescription(Supplier<String> s) {
@@ -58,6 +119,7 @@ public class AuthEditor extends VBox {
 
     public void setAuth(Auth a) {
         this.auth = a;
+        if (a.oauth2 == null) a.oauth2 = new OAuth2();
         if (!allowInherit && a.type == AuthType.INHERIT) a.type = AuthType.NONE;
         type.setValue(a.type);
         render();
@@ -81,17 +143,251 @@ public class AuthEditor extends VBox {
                 explanation.setText("Adds a key/value pair to the headers or to the query string.");
                 field(0, "Key", new TextField(auth.apiKey), v -> auth.apiKey = v);
                 field(1, "Value", new TextField(auth.apiValue), v -> auth.apiValue = v);
-                ComboBox<String> in = new ComboBox<>();
-                in.getItems().addAll("header", "query");
-                in.setValue(auth.apiIn == null ? "header" : auth.apiIn);
-                in.valueProperty().addListener((o, a, b) -> {
-                    auth.apiIn = b;
-                    onChange.run();
-                });
+                ComboBox<String> in = combo(List.of("header", "query"), auth.apiIn == null ? "header" : auth.apiIn, v -> auth.apiIn = v, null);
                 form.add(new Label("Add to"), 0, 2);
                 form.add(in, 1, 2);
             }
+            case OAUTH2 -> renderOAuth2();
         }
+    }
+
+    // ------------------------------------------------------------------ OAuth 2.0
+
+    private void renderOAuth2() {
+        OAuth2 o = auth.oauth2;
+        explanation.setText("PostFX gets an access token from your authorization server and adds it to every request using this auth. "
+                + "Expired tokens are refreshed automatically (refresh token, or a new token for Client Credentials / Password). "
+                + "All fields accept {{variables}}. Configure it on the collection or a folder to share one token between requests.");
+        int r = 0;
+        r = section(r, "CURRENT TOKEN");
+        form.add(new Label("Access Token"), 0, r);
+        tokenArea.textProperty().removeListener(tokenListener);
+        tokenArea.setText(o.accessToken);
+        tokenArea.textProperty().addListener(tokenListener);
+        form.add(tokenArea, 1, r++);
+        form.add(tokenInfo, 1, r++);
+        HBox buttons = new HBox(8, getToken, refreshToken, clearToken, cancelLogin);
+        buttons.setAlignment(Pos.CENTER_LEFT);
+        form.add(buttons, 1, r++);
+        form.add(oauthStatus, 1, r++);
+        showToken();
+
+        r = textRow(r, "Header Prefix", o.headerPrefix, v -> o.headerPrefix = v, "Bearer");
+        ComboBox<String> addTo = combo(List.of("header", "query"), o.addTokenTo, v -> {
+            o.addTokenTo = v;
+            render();
+        }, null);
+        form.add(new Label("Add token to"), 0, r);
+        form.add(addTo, 1, r++);
+        if ("query".equals(o.addTokenTo)) r = textRow(r, "Query parameter", o.queryParamName, v -> o.queryParamName = v, "access_token");
+        CheckBox auto = new CheckBox("Fetch / refresh the token automatically when it is missing or expired");
+        auto.setSelected(o.autoRefresh);
+        auto.selectedProperty().addListener((obs, a, b) -> {
+            o.autoRefresh = b;
+            onChange.run();
+        });
+        form.add(auto, 1, r++);
+
+        r = section(r, "CONFIGURE NEW TOKEN");
+        ComboBox<String> grant = combo(GRANTS, o.grantType, v -> {
+            o.grantType = v;
+            render();
+        }, new StringConverter<>() {
+            @Override
+            public String toString(String s) {
+                return OAuth2.label(s);
+            }
+
+            @Override
+            public String fromString(String s) {
+                return s;
+            }
+        });
+        form.add(new Label("Grant Type"), 0, r);
+        form.add(grant, 1, r++);
+
+        boolean code = o.grantType.startsWith("authorization_code");
+        boolean implicit = OAuth2.IMPLICIT.equals(o.grantType);
+        boolean password = OAuth2.PASSWORD.equals(o.grantType);
+        if (code || implicit) {
+            r = textRow(r, "Callback URL", o.redirectUri, v -> o.redirectUri = v, "http://localhost:8765/callback");
+            r = hint(r, "Register this redirect URL at your provider. A http://localhost URL is captured automatically; "
+                    + "with any other URL you paste the address shown by the browser after login.");
+            r = textRow(r, "Auth URL", o.authUrl, v -> o.authUrl = v, "https://id.example.com/oauth2/authorize");
+        }
+        if (!implicit) r = textRow(r, "Access Token URL", o.accessTokenUrl, v -> o.accessTokenUrl = v, "https://id.example.com/oauth2/token");
+        r = textRow(r, "Client ID", o.clientId, v -> o.clientId = v, "{{clientId}}");
+        if (!implicit) r = textRow(r, "Client Secret", o.clientSecret, v -> o.clientSecret = v, o.isPkce() ? "optional for public clients" : "{{clientSecret}}");
+        if (o.isPkce()) {
+            form.add(new Label("Code Challenge Method"), 0, r);
+            form.add(combo(List.of("S256", "plain"), o.challengeAlgorithm, v -> o.challengeAlgorithm = v, null), 1, r++);
+        }
+        if (password) {
+            r = textRow(r, "Username", o.username, v -> o.username = v, "{{username}}");
+            r = textRow(r, "Password", o.password, v -> o.password = v, "{{password}}");
+        }
+        r = textRow(r, "Scope", o.scope, v -> o.scope = v, "e.g. openid profile read:items");
+        r = textRow(r, "Audience", o.audience, v -> o.audience = v, "optional (Auth0, ...)");
+        if (code || implicit) r = textRow(r, "State", o.state, v -> o.state = v, "random when empty");
+        if (!implicit) {
+            ComboBox<String> clientAuth = combo(List.of("header", "body"), o.clientAuthentication, v -> o.clientAuthentication = v,
+                    new StringConverter<>() {
+                        @Override
+                        public String toString(String s) {
+                            return "body".equals(s) ? "Send client credentials in body" : "Send as Basic Auth header";
+                        }
+
+                        @Override
+                        public String fromString(String s) {
+                            return s;
+                        }
+                    });
+            form.add(new Label("Client Authentication"), 0, r);
+            form.add(clientAuth, 1, r++);
+            r = textRow(r, "Refresh Token URL", o.refreshTokenUrl, v -> o.refreshTokenUrl = v, "optional, defaults to the Access Token URL");
+        }
+        Button help = new Button("? OAuth 2.0 help");
+        help.getStyleClass().add("link-button");
+        help.setOnAction(e -> HelpWindow.show(getScene().getWindow(), "OAuth 2.0"));
+        form.add(help, 1, r);
+    }
+
+    private final javafx.beans.value.ChangeListener<String> tokenListener = (obs, a, b) -> {
+        if (auth.oauth2 == null || b.equals(auth.oauth2.accessToken)) return;
+        auth.oauth2.accessToken = b.strip();
+        auth.oauth2.expiresAt = 0; // pasted token: expiry unknown
+        showToken();
+        onChange.run();
+    };
+
+    private void showToken() {
+        OAuth2 o = auth.oauth2;
+        StringBuilder sb = new StringBuilder();
+        if (!o.hasToken()) {
+            sb.append("No access token");
+        } else {
+            sb.append(o.tokenType == null || o.tokenType.isBlank() ? "Token" : o.tokenType);
+            if (o.expiresAt > 0) {
+                long mins = (o.expiresAt - System.currentTimeMillis()) / 60000;
+                sb.append(o.isExpired() ? " · expired at " : " · expires in " + Math.max(0, mins) + " min (")
+                        .append(TIME.format(Instant.ofEpochMilli(o.expiresAt))).append(o.isExpired() ? "" : ")");
+            } else {
+                sb.append(" · expiry unknown");
+            }
+            if (o.refreshToken != null && !o.refreshToken.isBlank()) sb.append(" · refresh token available");
+        }
+        tokenInfo.setText(sb.toString());
+        refreshToken.setDisable(o.refreshToken == null || o.refreshToken.isBlank());
+        clearToken.setDisable(!o.hasToken());
+        if (!tokenArea.getText().equals(o.accessToken == null ? "" : o.accessToken)) {
+            tokenArea.textProperty().removeListener(tokenListener);
+            tokenArea.setText(o.accessToken);
+            tokenArea.textProperty().addListener(tokenListener);
+        }
+    }
+
+    private void requestToken(boolean refresh) {
+        if (ctx == null) return;
+        OAuth2 o = auth.oauth2;
+        VariableContext vars = variables.get();
+        OAuth2Client client = new OAuth2Client(ctx.http, ctx.workspace.settings);
+        pendingClient = client;
+        setBusy(true, refresh ? "Refreshing the token…" : o.isInteractive()
+                ? "Complete the login in your browser… (" + OAuth2Client.BROWSER_TIMEOUT_SECONDS / 60 + " min timeout)" : "Requesting a token…");
+        Consumer<String> log = msg -> Platform.runLater(() -> ctx.status.set(msg));
+        ctx.background.submit(() -> {
+            try {
+                if (refresh) client.refresh(o, vars, log);
+                else client.obtain(o, vars, interaction(), log);
+                Platform.runLater(() -> {
+                    setBusy(false, "✔ Token received");
+                    oauthStatus.getStyleClass().setAll("label", "pass");
+                    showToken();
+                    onChange.run();
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    setBusy(false, "✘ " + ex.getMessage());
+                    oauthStatus.getStyleClass().setAll("label", "fail");
+                });
+            }
+        });
+    }
+
+    private void setBusy(boolean busy, String message) {
+        getToken.setDisable(busy);
+        refreshToken.setDisable(busy || auth.oauth2.refreshToken == null || auth.oauth2.refreshToken.isBlank());
+        cancelLogin.setVisible(busy && auth.oauth2.isInteractive());
+        oauthStatus.getStyleClass().setAll("label");
+        oauthStatus.setText(message);
+    }
+
+    private OAuth2Client.Interaction interaction() {
+        return new OAuth2Client.Interaction() {
+            @Override
+            public void openBrowser(String url) {
+                Platform.runLater(() -> ctx.openBrowser(url));
+            }
+
+            @Override
+            public String askRedirectedUrl(String authorizeUrl, String redirectUri) {
+                CompletableFuture<String> answer = new CompletableFuture<>();
+                Platform.runLater(() -> {
+                    TextInputDialog d = new TextInputDialog();
+                    if (getScene() != null) d.initOwner(getScene().getWindow());
+                    d.setTitle("OAuth 2.0 login");
+                    d.setHeaderText("Log in in the browser window that just opened.\nYou are then redirected to " + redirectUri
+                            + "\nCopy the full address from the browser's address bar and paste it here.");
+                    d.setContentText("Redirected URL");
+                    d.getEditor().setPrefColumnCount(50);
+                    answer.complete(d.showAndWait().orElse(null));
+                });
+                return answer.join();
+            }
+        };
+    }
+
+    // ------------------------------------------------------------------ form helpers
+
+    private int section(int row, String title) {
+        Label l = new Label(title);
+        l.getStyleClass().add("section-title");
+        l.setPadding(new Insets(8, 0, 0, 0));
+        form.add(l, 0, row, 2, 1);
+        return row + 1;
+    }
+
+    private int hint(int row, String text) {
+        Label l = new Label(text);
+        l.getStyleClass().add("hint");
+        l.setWrapText(true);
+        form.add(l, 1, row);
+        return row + 1;
+    }
+
+    private int textRow(int row, String label, String value, Consumer<String> setter, String prompt) {
+        TextField f = new TextField(value == null ? "" : value);
+        f.setPromptText(prompt);
+        f.textProperty().addListener((o, a, b) -> {
+            setter.accept(b);
+            onChange.run();
+        });
+        form.add(new Label(label), 0, row);
+        form.add(f, 1, row);
+        return row + 1;
+    }
+
+    private ComboBox<String> combo(List<String> values, String current, Consumer<String> setter, StringConverter<String> converter) {
+        ComboBox<String> c = new ComboBox<>();
+        c.getItems().addAll(values);
+        if (converter != null) c.setConverter(converter);
+        c.setValue(current == null || !values.contains(current) ? values.get(0) : current);
+        c.valueProperty().addListener((o, a, b) -> {
+            if (b == null) return;
+            setter.accept(b);
+            onChange.run();
+        });
+        return c;
     }
 
     private void field(int row, String label, TextInputControl f, Consumer<String> setter) {

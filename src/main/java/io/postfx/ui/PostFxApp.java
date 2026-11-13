@@ -39,6 +39,7 @@ public class PostFxApp extends Application {
             }
         }
         ctx = new AppContext(ws, store);
+        ctx.hostServices = getHostServices();
         new MainWindow(ctx, stage, firstRun);
         stage.setOnCloseRequest(e -> ctx.shutdown());
         stage.show();

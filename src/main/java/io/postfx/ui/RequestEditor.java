@@ -204,6 +204,7 @@ public class RequestEditor extends BorderPane {
         reloadPathVariables();
         headers.setData(item.request.headers);
         auth.setInheritedDescription(this::inheritedAuthText);
+        auth.setContext(ctx, this::currentVariables);
         auth.setAuth(item.request.auth);
         body.setBody(item.request.body);
         pre.setText(item.preRequestScript);

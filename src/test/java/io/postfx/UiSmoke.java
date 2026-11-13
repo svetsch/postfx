@@ -52,6 +52,19 @@ public class UiSmoke extends Application {
         items.testScript = "pm.test('two items', () => pm.expect(pm.response.json()).to.have.lengthOf(2));\npm.test('fails on purpose', () => pm.expect(1).to.eql(2));";
         local.items.add(items);
         ws.collections.add(0, local);
+        Collection oauth = new Collection("OAuth API");
+        oauth.variables.add(new KeyValue("baseUrl", server.url()));
+        oauth.variables.add(new KeyValue("clientSecret", "s3cret"));
+        oauth.auth = new io.postfx.model.Auth(io.postfx.model.AuthType.OAUTH2);
+        oauth.auth.oauth2.grantType = io.postfx.model.OAuth2.CLIENT_CREDENTIALS;
+        oauth.auth.oauth2.accessTokenUrl = "{{baseUrl}}/oauth/token";
+        oauth.auth.oauth2.clientId = "app";
+        oauth.auth.oauth2.clientSecret = "{{clientSecret}}";
+        oauth.auth.oauth2.scope = "read";
+        RequestItem secure = new RequestItem("Protected resource", "GET", "{{baseUrl}}/secure");
+        secure.checks.add(new io.postfx.model.Check(io.postfx.model.CheckSource.STATUS, "", io.postfx.model.CheckOperator.EQUALS, "200"));
+        oauth.items.add(secure);
+        ws.collections.add(oauth);
         AppContext ctx = new AppContext(ws, store);
         MainWindow w = new MainWindow(ctx, stage, true);
         stage.show();
@@ -92,7 +105,24 @@ public class UiSmoke extends Application {
                 }
             }
         });
-        step(19500, () -> {
+        step(19000, () -> {
+            w.openFolder(oauth);
+            stage.getScene().getRoot().lookupAll(".tab-pane").forEach(n -> {
+                var tp = (javafx.scene.control.TabPane) n;
+                tp.getTabs().stream().filter(t -> t.getText().equals("Auth")).findFirst().ifPresent(t -> tp.getSelectionModel().select(t));
+            });
+        });
+        step(20000, () -> stage.getScene().getRoot().lookupAll(".button").stream()
+                .filter(n -> n instanceof javafx.scene.control.Button b && "Get New Access Token".equals(b.getText()) && b.isVisible() && b.getScene() != null)
+                .findFirst().ifPresent(n -> ((javafx.scene.control.Button) n).fire()));
+        step(22000, () -> snap(stage.getScene(), "8-oauth.png"));
+        step(22500, () -> w.openRequest(secure));
+        step(23000, () -> sendAccelerator(stage.getScene()));
+        step(25000, () -> {
+            snap(stage.getScene(), "9-oauth-request.png");
+            System.out.println("OAuth token: " + oauth.auth.oauth2.accessToken);
+        });
+        step(26000, () -> {
             System.out.println("Items in sample: " + Items.flatten(ws.collections.get(1)).size());
             System.out.println("Active environment: " + ctx.activeEnvironment.get());
             System.out.println("SMOKE OK");

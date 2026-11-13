@@ -59,6 +59,7 @@ public class FolderEditor extends BorderPane {
         VBox.setVgrow(docs, Priority.ALWAYS);
 
         AuthEditor auth = new AuthEditor(!isCollection);
+        auth.setContext(ctx, () -> ctx.variables(ctx.collectionOf(folder)));
         auth.setAuth(folder.auth);
         auth.setOnChange(ctx::changed);
 

@@ -73,6 +73,13 @@ public class RequestExecutor {
 
         // ---- send
         Auth auth = RequestPreparer.effectiveAuth(request, chain);
+        if (auth.type == io.postfx.model.AuthType.OAUTH2) {
+            // tokens are kept in the saved model (request, folder or collection), not in the working copy
+            Auth original = RequestPreparer.effectiveAuth(item.request, chain);
+            if (original.type == io.postfx.model.AuthType.OAUTH2) auth = original;
+            new OAuth2Client(http, settings).ensureToken(auth.oauth2, vars,
+                    msg -> result.console.add(new ConsoleEntry(msg.contains("failed") ? "error" : "info", msg, "oauth2")));
+        }
         ResolvedRequest resolved = RequestPreparer.prepare(request, auth, vars);
         result.sent = resolved;
         HttpResult response = sender.send(resolved);

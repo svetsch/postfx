@@ -75,7 +75,8 @@ public final class BuildInfo {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("Version", version());
         m.put("Commit", commit().equals("unknown") ? "unknown (not built from a git checkout)" : commitFull() + (dirty() ? "  (uncommitted changes)" : ""));
-        m.put("Branch", branch());
+        // CI builds of a tag are detached: the "branch" is then the commit id, which is not worth showing
+        if (!branch().equals(commitFull()) && !branch().equals("unknown") || commit().equals("unknown")) m.put("Branch", branch());
         if (!tag().isEmpty()) m.put("Tag", tag());
         m.put("Commit date", commitTime());
         m.put("Build date", buildTime());

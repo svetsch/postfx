@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### OAuth 2.0
+- New **OAuth 2.0** auth type for requests, folders and collections
+- Grant types: Authorization Code, Authorization Code with PKCE (S256 / plain), Implicit, Password Credentials, Client Credentials
+- "Get New Access Token" opens the system browser; localhost callback URLs are captured automatically, other callback URLs (e.g. Postman's) by pasting the redirected address; state is verified
+- Token sent as `Authorization` header (configurable prefix) or query parameter; client authentication as Basic header or in the body; scope, audience, state, refresh token URL
+- Automatic renewal before requests (also in the runner and the command line): refresh token first, then a new token for client credentials / password grants
+- Postman import/export of OAuth 2.0 settings, OpenAPI / Swagger `oauth2` security schemes, Java export fetches client credentials / password tokens, cURL export includes the token
+
+### Fixes
+- About box: the branch is no longer shown as a commit id for builds made from a tag
+
 ## 0.5.0
 
 First public release of PostFX, a JavaFX API client and test runner compatible with Postman.

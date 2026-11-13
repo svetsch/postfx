@@ -253,6 +253,42 @@ public final class PostmanExporter {
                 kv(p, "value", a.apiValue);
                 kv(p, "in", a.apiIn);
             }
+            case OAUTH2 -> {
+                o.put("type", "oauth2");
+                ArrayNode p = o.putArray("oauth2");
+                io.postfx.model.OAuth2 c = a.oauth2;
+                kv(p, "grant_type", c.grantType);
+                kv(p, "accessToken", c.accessToken);
+                kv(p, "tokenType", c.tokenType);
+                kv(p, "addTokenTo", "query".equals(c.addTokenTo) ? "queryParams" : "header");
+                kv(p, "headerPrefix", c.headerPrefix);
+                kv(p, "authUrl", c.authUrl);
+                kv(p, "accessTokenUrl", c.accessTokenUrl);
+                if (c.refreshTokenUrl != null && !c.refreshTokenUrl.isBlank()) kv(p, "refreshTokenUrl", c.refreshTokenUrl);
+                kv(p, "clientId", c.clientId);
+                kv(p, "clientSecret", c.clientSecret);
+                kv(p, "scope", c.scope);
+                kv(p, "redirect_uri", c.redirectUri);
+                kv(p, "useBrowser", "false");
+                kv(p, "username", c.username);
+                kv(p, "password", c.password);
+                kv(p, "client_authentication", c.clientAuthentication);
+                kv(p, "challengeAlgorithm", c.challengeAlgorithm);
+                kv(p, "state", c.state);
+                if (c.audience != null && !c.audience.isBlank()) {
+                    for (String list : new String[]{"authRequestParams", "tokenRequestParams"}) {
+                        ObjectNode e = p.addObject();
+                        e.put("key", list);
+                        ArrayNode arr = e.putArray("value");
+                        ObjectNode aud = arr.addObject();
+                        aud.put("key", "audience");
+                        aud.put("value", c.audience);
+                        aud.put("enabled", true);
+                        aud.put("send_as", list.startsWith("auth") ? "request_url" : "request_body");
+                        e.put("type", "any");
+                    }
+                }
+            }
             default -> { }
         }
     }

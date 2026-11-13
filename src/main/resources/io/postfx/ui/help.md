@@ -40,13 +40,50 @@ Headers support `{{variables}}`. PostFX adds `User-Agent`, `Accept`, `Content-Ty
 - **binary**: the content of a file.
 
 ## Auth
-Basic, Bearer token and API key (header or query). New requests use **Inherit auth from parent**: configure auth once on the collection or a folder (double-click it in the tree) and every request below inherits it.
+Basic, Bearer token, API key (header or query) and **OAuth 2.0** (see the OAuth 2.0 page). New requests use **Inherit auth from parent**: configure auth once on the collection or a folder (double-click it in the tree) and every request below inherits it.
 
 ## Bulk edit
 Key/value tables have a **Bulk edit** toggle: one `key: value` per line, prefix a line with `//` to disable it.
 
 ## Code generation
 **</> Code** shows the request as a cURL command, a Java (JUnit + REST Assured) test, or Postman JSON.
+
+# OAuth 2.0
+Select **OAuth 2.0** in the Auth tab of a collection, folder or request. Configuring it on the collection is recommended: every request inherits it and they share one token.
+
+## Grant types
+- **Client Credentials**: machine-to-machine. Needs the Access Token URL, Client ID and Client Secret.
+- **Password Credentials**: adds Username and Password (legacy, avoid for new APIs).
+- **Authorization Code**: interactive login in your browser. Needs the Auth URL, Access Token URL, Client ID, Client Secret and Callback URL.
+- **Authorization Code (With PKCE)**: same with a code challenge (`S256` or `plain`), the recommended flow for public clients; the Client Secret is optional.
+- **Implicit**: legacy browser flow returning the token directly.
+
+Scope, Audience and State are optional. Every field accepts `{{variables}}`: keep secrets such as `{{clientSecret}}` in an environment.
+
+## Getting a token
+Click **Get New Access Token**. For Client Credentials and Password the token is requested immediately. For the browser flows, PostFX opens your browser on the Auth URL:
+- with a Callback URL like `http://localhost:8765/callback` (register it at your provider), PostFX listens on that port and captures the redirect automatically;
+- with any other Callback URL (for example `https://oauth.pstmn.io/v1/callback` already registered for Postman), copy the address shown by the browser after login and paste it into the dialog.
+
+The **state** parameter is checked to protect against CSRF. **Cancel login** stops waiting for the browser.
+
+## Using and renewing the token
+The token is sent as `Authorization: Bearer <token>` (**Header Prefix** is configurable) or as a query parameter. You can also paste a token into the Access Token field.
+
+With **Fetch / refresh the token automatically** enabled, before each request (single send, runner and command line):
+1. an expired token is renewed with the refresh token when there is one;
+2. otherwise Client Credentials and Password grants request a new token;
+3. browser flows need **Get New Access Token** again (a message in the Console says so).
+
+Token requests appear in the response Console. The token is saved with the workspace and exported to Postman.
+
+## Client authentication
+**Send as Basic Auth header** (default) sends `client_id:client_secret` as HTTP Basic; **Send client credentials in body** sends `client_id` and `client_secret` form fields instead. Public clients without a secret always send `client_id` in the body.
+
+## Import and export
+- Postman collections keep their OAuth 2.0 configuration both ways.
+- OpenAPI / Swagger `oauth2` security schemes become OAuth 2.0 auth (client credentials, authorization code with PKCE, password or implicit, with the scopes of the flow).
+- Java export: Client Credentials and Password grants fetch their token in the generated test (`oauthToken(...)`); for browser flows run the tests with `-Dvar.accessToken=<token>`.
 
 # Variables and environments
 Write `{{name}}` anywhere: URL, params, headers, body, auth, checks, extractors.

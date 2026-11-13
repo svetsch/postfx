@@ -234,6 +234,28 @@ public final class JavaTestExporter {
                 if ("query".equals(auth.apiIn)) sb.append("                .queryParam(").append(val(auth.apiKey)).append(", ").append(val(auth.apiValue)).append(")\n");
                 else sb.append("                .header(").append(val(auth.apiKey)).append(", ").append(val(auth.apiValue)).append(")\n");
             }
+            case OAUTH2 -> {
+                io.postfx.model.OAuth2 oa = auth.oauth2;
+                String token;
+                if (!oa.isInteractive()) {
+                    // client credentials / password: the test fetches (and caches) its own token
+                    token = "oauthToken(" + val(oa.accessTokenUrl) + ", " + s(oa.grantType) + ", " + val(oa.clientId) + ", "
+                            + val(oa.clientSecret) + ", " + val(oa.scope) + ", " + val(oa.audience) + ", " + val(oa.username) + ", "
+                            + val(oa.password) + ", " + !"body".equals(oa.clientAuthentication) + ")";
+                } else {
+                    // interactive grants cannot run unattended: pass a token with -Dvar.accessToken=...
+                    token = oa.accessToken != null && oa.accessToken.contains("{{") ? val(oa.accessToken) : "v(\"{{accessToken}}\")";
+                    sb.append("                // OAuth 2.0 ").append(io.postfx.model.OAuth2.label(oa.grantType))
+                            .append(": run with -Dvar.accessToken=<token>\n");
+                }
+                if ("query".equals(oa.addTokenTo)) {
+                    sb.append("                .queryParam(").append(s(oa.queryParamName == null || oa.queryParamName.isBlank() ? "access_token" : oa.queryParamName))
+                            .append(", ").append(token).append(")\n");
+                } else {
+                    String prefix = oa.headerPrefix == null || oa.headerPrefix.isBlank() ? "" : oa.headerPrefix.strip() + " ";
+                    sb.append("                .header(\"Authorization\", ").append(prefix.isEmpty() ? "" : s(prefix) + " + ").append(token).append(")\n");
+                }
+            }
             default -> { }
         }
         String url = RequestPreparer.applyPathVariables(r.url == null ? "" : r.url, r.pathVariables);
@@ -446,6 +468,30 @@ public final class JavaTestExporter {
                         case "$randomInt" -> String.valueOf(new java.util.Random().nextInt(1001));
                         default -> null;
                     };
+                }
+
+                private static final Map<String, String> OAUTH_TOKENS = new java.util.concurrent.ConcurrentHashMap<>();
+
+                /** OAuth 2.0 client credentials / password token, requested once and cached for the test run. */
+                static String oauthToken(String tokenUrl, String grant, String clientId, String clientSecret, String scope,
+                                         String audience, String username, String password, boolean basicClientAuth) {
+                    String key = tokenUrl + "|" + grant + "|" + clientId + "|" + username + "|" + scope;
+                    return OAUTH_TOKENS.computeIfAbsent(key, k -> {
+                        var spec = given().accept("application/json")
+                                .formParam("grant_type", grant.equals("password_credentials") ? "password" : "client_credentials");
+                        if (!scope.isEmpty()) spec.formParam("scope", scope);
+                        if (!audience.isEmpty()) spec.formParam("audience", audience);
+                        if (grant.equals("password_credentials")) spec.formParam("username", username).formParam("password", password);
+                        if (basicClientAuth && !clientSecret.isEmpty()) {
+                            spec.auth().preemptive().basic(clientId, clientSecret);
+                        } else {
+                            spec.formParam("client_id", clientId);
+                            if (!clientSecret.isEmpty()) spec.formParam("client_secret", clientSecret);
+                        }
+                        Response r = spec.post(tokenUrl);
+                        assertEquals(200, r.statusCode(), "OAuth 2.0 token request failed: " + r.asString());
+                        return r.jsonPath().getString("access_token");
+                    });
                 }
 
                 /** Value at a GPath ("data.items[0].id", "$" for the root), null when missing. */

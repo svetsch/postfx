@@ -9,6 +9,7 @@ public class Auth {
     public String apiValue = "";
     /** "header" or "query" */
     public String apiIn = "header";
+    public OAuth2 oauth2 = new OAuth2();
 
     public Auth() {}
 

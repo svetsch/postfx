@@ -60,6 +60,21 @@ public class AppContext {
         background.submit(() -> scripts.run("pm.test('warm-up', () => pm.expect(1).to.eql(1));", new io.postfx.script.ScriptContext()));
     }
 
+    /** Set by the application; used to open the system browser (OAuth 2.0 login). */
+    public javafx.application.HostServices hostServices;
+
+    public void openBrowser(String url) {
+        try {
+            if (hostServices != null) {
+                hostServices.showDocument(url);
+                return;
+            }
+            if (java.awt.Desktop.isDesktopSupported()) java.awt.Desktop.getDesktop().browse(java.net.URI.create(url));
+        } catch (Exception e) {
+            status.set("Could not open the browser: " + e.getMessage());
+        }
+    }
+
     void setMain(MainWindow main) {
         this.main = main;
     }

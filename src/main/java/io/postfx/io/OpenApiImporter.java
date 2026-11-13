@@ -143,12 +143,88 @@ public final class OpenApiImporter {
                     addVar(c, "apiKey");
                     if ("cookie".equals(s.path("in").asText())) warnings.add("API key in cookie (" + e.getKey() + ") was mapped to a header");
                 }
-                case "oauth2", "openIdConnect" -> a = bearer(c, "accessToken");
+                case "oauth2" -> a = oauth2(c, s);
+                case "openIdConnect" -> {
+                    a = new Auth(AuthType.OAUTH2);
+                    a.oauth2.grantType = io.postfx.model.OAuth2.AUTHORIZATION_CODE_PKCE;
+                    a.oauth2.clientId = "{{clientId}}";
+                    addVar(c, "clientId");
+                    warnings.add("OpenID Connect scheme '" + e.getKey() + "': fill in the Auth and Access Token URLs from "
+                            + s.path("openIdConnectUrl").asText("the discovery document"));
+                }
                 default -> warnings.add("Security scheme '" + e.getKey() + "' of type " + type + " is not supported");
             }
             if (a != null) out.put(e.getKey(), a);
         }
         return out;
+    }
+
+    private static String firstScheme(JsonNode security) {
+        if (security == null || !security.isArray() || security.isEmpty() || security.get(0).isEmpty()) return null;
+        return security.get(0).fieldNames().next();
+    }
+
+    /** OAuth 2.0 scheme: OpenAPI 3 "flows" or Swagger 2 "flow" (first supported flow wins). */
+    private Auth oauth2(Collection c, JsonNode s) {
+        Auth a = new Auth(AuthType.OAUTH2);
+        io.postfx.model.OAuth2 o = a.oauth2;
+        o.clientId = "{{clientId}}";
+        addVar(c, "clientId");
+        JsonNode flow;
+        String grant;
+        if (swagger2) {
+            flow = s;
+            grant = switch (s.path("flow").asText()) {
+                case "application" -> io.postfx.model.OAuth2.CLIENT_CREDENTIALS;
+                case "password" -> io.postfx.model.OAuth2.PASSWORD;
+                case "implicit" -> io.postfx.model.OAuth2.IMPLICIT;
+                default -> io.postfx.model.OAuth2.AUTHORIZATION_CODE;
+            };
+        } else {
+            JsonNode flows = s.path("flows");
+            if (flows.has("clientCredentials")) {
+                flow = flows.get("clientCredentials");
+                grant = io.postfx.model.OAuth2.CLIENT_CREDENTIALS;
+            } else if (flows.has("authorizationCode")) {
+                flow = flows.get("authorizationCode");
+                grant = io.postfx.model.OAuth2.AUTHORIZATION_CODE_PKCE;
+            } else if (flows.has("password")) {
+                flow = flows.get("password");
+                grant = io.postfx.model.OAuth2.PASSWORD;
+            } else {
+                flow = flows.path("implicit");
+                grant = io.postfx.model.OAuth2.IMPLICIT;
+            }
+        }
+        o.grantType = grant;
+        o.authUrl = absolute(c, flow.path("authorizationUrl").asText(""));
+        o.accessTokenUrl = absolute(c, flow.path("tokenUrl").asText(""));
+        o.refreshTokenUrl = absolute(c, flow.path("refreshUrl").asText(""));
+        java.util.List<String> scopes = new java.util.ArrayList<>();
+        flow.path("scopes").fieldNames().forEachRemaining(scopes::add);
+        o.scope = String.join(" ", scopes);
+        if (!o.isInteractive() || grant.equals(io.postfx.model.OAuth2.AUTHORIZATION_CODE)) {
+            o.clientSecret = "{{clientSecret}}";
+            addVar(c, "clientSecret");
+        }
+        if (grant.equals(io.postfx.model.OAuth2.PASSWORD)) {
+            o.username = "{{username}}";
+            o.password = "{{password}}";
+            addVar(c, "username");
+            addVar(c, "password");
+        }
+        return a;
+    }
+
+    /** Resolves a relative OAuth URL against the server URL. */
+    private static String absolute(Collection c, String url) {
+        if (url.isEmpty() || url.matches("(?i)^[a-z]+://.*")) return url;
+        String base = c.variables.stream().filter(v -> v.key.equals("baseUrl")).map(v -> v.value).findFirst().orElse("");
+        try {
+            return java.net.URI.create(base).resolve(url).toString();
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     private static Auth basic(Collection c) {
@@ -312,7 +388,9 @@ public final class OpenApiImporter {
 
         // ---- auth
         Auth opAuth = authFor(op.get("security"), schemes);
-        if (opAuth != null) r.request.auth = opAuth;
+        String opScheme = firstScheme(op.get("security"));
+        // same scheme as the API default: inherit it (one shared OAuth token instead of one per request)
+        if (opAuth != null && !(opScheme != null && opScheme.equals(firstScheme(root.get("security"))))) r.request.auth = opAuth;
         return r;
     }
 

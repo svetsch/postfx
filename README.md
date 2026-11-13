@@ -2,7 +2,7 @@
 
 An API client and test runner built with **Java 21 + OpenJFX**, compatible with Postman collections and scripts.
 
-- **Requests**: all methods, query/path params, headers, raw / form / multipart / GraphQL / binary bodies, Basic / Bearer / API key auth with inheritance from folders and collections, cookies, history, cURL paste.
+- **Requests**: all methods, query/path params, headers, raw / form / multipart / GraphQL / binary bodies, Basic / Bearer / API key / **OAuth 2.0** auth (all grant types, PKCE, automatic refresh) with inheritance from folders and collections, cookies, history, cURL paste.
 - **Variables**: global, collection, environment, iteration data and local scopes (Postman precedence), dynamic variables (`{{$guid}}`, `{{$timestamp}}`…), resolved URL preview.
 - **Scripts**: pre-request and test scripts in JavaScript (GraalJS, sandboxed) with the Postman `pm` API: `pm.test`, `pm.expect` (chai), `pm.response.to.have…`, `pm.environment/collectionVariables/globals/variables`, `pm.sendRequest`, `pm.execution.setNextRequest/skipRequest`, `CryptoJS`, lodash subset, `xml2Json`, JSON schema, legacy `tests[]` / `postman.*`.
 - **No-code checks and extractors**: assert on status / time / headers / JSON paths / body, and extract response values into variables to chain requests. Right-click a value in the response JSON tree to create them.

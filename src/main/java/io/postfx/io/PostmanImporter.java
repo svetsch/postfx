@@ -249,14 +249,52 @@ public final class PostmanImporter {
                 auth.apiIn = in.isEmpty() ? "header" : in;
             }
             case "oauth2" -> {
-                String token = param(a, "oauth2", "accessToken");
-                auth.type = AuthType.BEARER;
-                auth.token = token.isEmpty() ? "{{accessToken}}" : token;
-                warnings.add("OAuth 2.0 auth was converted to a Bearer token (" + auth.token + ")");
+                auth.type = AuthType.OAUTH2;
+                io.postfx.model.OAuth2 o = auth.oauth2;
+                String grant = param(a, "oauth2", "grant_type");
+                o.grantType = grant.isEmpty() ? io.postfx.model.OAuth2.AUTHORIZATION_CODE : grant;
+                o.accessToken = param(a, "oauth2", "accessToken");
+                o.tokenType = param(a, "oauth2", "tokenType");
+                o.authUrl = param(a, "oauth2", "authUrl");
+                o.accessTokenUrl = param(a, "oauth2", "accessTokenUrl");
+                o.refreshTokenUrl = param(a, "oauth2", "refreshTokenUrl");
+                o.clientId = param(a, "oauth2", "clientId");
+                o.clientSecret = param(a, "oauth2", "clientSecret");
+                o.scope = param(a, "oauth2", "scope");
+                o.username = param(a, "oauth2", "username");
+                o.password = param(a, "oauth2", "password");
+                o.state = param(a, "oauth2", "state");
+                String redirect = param(a, "oauth2", "redirect_uri");
+                if (!redirect.isEmpty()) o.redirectUri = redirect;
+                String clientAuth = param(a, "oauth2", "client_authentication");
+                if (!clientAuth.isEmpty()) o.clientAuthentication = clientAuth;
+                String challenge = param(a, "oauth2", "challengeAlgorithm");
+                if (!challenge.isEmpty()) o.challengeAlgorithm = challenge;
+                String prefix = param(a, "oauth2", "headerPrefix");
+                if (!prefix.isEmpty()) o.headerPrefix = prefix;
+                o.addTokenTo = "queryParams".equals(param(a, "oauth2", "addTokenTo")) ? "query" : "header";
+                for (String list : List.of("authRequestParams", "tokenRequestParams")) {
+                    JsonNode extra = paramNode(a, "oauth2", list);
+                    if (extra != null && extra.isArray()) {
+                        for (JsonNode p : extra) {
+                            if ("audience".equals(p.path("key").asText()) && p.path("enabled").asBoolean(true)) o.audience = p.path("value").asText("");
+                        }
+                    }
+                }
             }
             default -> warnings.add("Auth type '" + type + "' is not supported and was replaced by 'No Auth'");
         }
         return auth;
+    }
+
+    private static JsonNode paramNode(JsonNode auth, String type, String key) {
+        JsonNode p = auth.get(type);
+        if (p == null) return null;
+        if (p.isArray()) {
+            for (JsonNode kv : p) if (key.equals(kv.path("key").asText())) return kv.get("value");
+            return null;
+        }
+        return p.get(key);
     }
 
     /** Auth parameter in either v2.1 form ([{key, value}]) or v2.0 form ({key: value}). */
