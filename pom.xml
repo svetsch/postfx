@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.postfx</groupId>
+    <artifactId>postfx</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>PostFX</name>
+    <description>API client and test runner (Postman compatible) built with OpenJFX</description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <javafx.version>21.0.6</javafx.version>
+        <graal.version>24.1.2</graal.version>
+        <jackson.version>2.18.2</jackson.version>
+        <richtextfx.version>0.11.5</richtextfx.version>
+        <junit.version>5.11.4</junit.version>
+        <main.class>io.postfx.Launcher</main.class>
+        <exec.mainClass>${main.class}</exec.mainClass>
+        <maven.build.timestamp.format>yyyy-MM-dd HH:mm:ss 'UTC'</maven.build.timestamp.format>
+        <build.timestamp>${maven.build.timestamp}</build.timestamp>
+    </properties>
+
+    <dependencies>
+        <!-- UI -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.fxmisc.richtext</groupId>
+            <artifactId>richtextfx</artifactId>
+            <version>${richtextfx.version}</version>
+        </dependency>
+
+        <!-- JSON -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- JavaScript engine for pre-request / test scripts -->
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>polyglot</artifactId>
+            <version>${graal.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.graalvm.polyglot</groupId>
+            <artifactId>js-community</artifactId>
+            <version>${graal.version}</version>
+            <type>pom</type>
+        </dependency>
+
+        <!-- Tests -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- version / build time for the About box -->
+            <resource>
+                <directory>src/main/resources-filtered</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <propertiesEncoding>UTF-8</propertiesEncoding>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+                <configuration>
+                    <argLine>-Dpolyglot.engine.WarnInterpreterOnly=false</argLine>
+                </configuration>
+            </plugin>
+            <!-- Copy runtime dependencies to target/lib so the jar runs with "java -jar" -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.8.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-libs</id>
+                        <phase>package</phase>
+                        <goals><goal>copy-dependencies</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>${main.class}</mainClass>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>lib/</classpathPrefix>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <!-- mvn exec:java  -> starts the UI from sources -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <mainClass>${exec.mainClass}</mainClass>
+                    <systemProperties>
+                        <systemProperty>
+                            <key>polyglot.engine.WarnInterpreterOnly</key>
+                            <value>false</value>
+                        </systemProperty>
+                    </systemProperties>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Git commit information for the About box (io/postfx/git.properties).
+             Active once the repository has at least one commit; otherwise the About box shows "unknown". -->
+        <profile>
+            <id>git-info</id>
+            <activation>
+                <file><exists>${basedir}/.git/logs/HEAD</exists></file>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>io.github.git-commit-id</groupId>
+                        <artifactId>git-commit-id-maven-plugin</artifactId>
+                        <version>9.0.1</version>
+                        <executions>
+                            <execution>
+                                <id>git-info</id>
+                                <phase>initialize</phase>
+                                <goals><goal>revision</goal></goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                            <generateGitPropertiesFilename>${project.build.outputDirectory}/io/postfx/git.properties</generateGitPropertiesFilename>
+                            <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                            <failOnUnableToExtractRepoInfo>false</failOnUnableToExtractRepoInfo>
+                            <dateFormat>yyyy-MM-dd HH:mm:ss Z</dateFormat>
+                            <includeOnlyProperties>
+                                <includeOnlyProperty>^git.commit.id$</includeOnlyProperty>
+                                <includeOnlyProperty>^git.commit.id.abbrev$</includeOnlyProperty>
+                                <includeOnlyProperty>^git.commit.time$</includeOnlyProperty>
+                                <includeOnlyProperty>^git.branch$</includeOnlyProperty>
+                                <includeOnlyProperty>^git.dirty$</includeOnlyProperty>
+                                <includeOnlyProperty>^git.closest.tag.name$</includeOnlyProperty>
+                            </includeOnlyProperties>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!--
+          Native executable with jpackage (JDK 21+):
+            mvn -Pnative package                         -> target/native/PostFX/ (app image: PostFX.exe / PostFX.app / bin/PostFX)
+            mvn -Pnative package -Djpackage.type=msi     -> Windows installer (needs WiX Toolset 3.x on the PATH)
+            mvn -Pnative package -Djpackage.type=exe     -> Windows setup .exe (needs WiX)
+            mvn -Pnative package -Djpackage.type=deb|rpm -> Linux package
+            mvn -Pnative package -Djpackage.type=dmg|pkg -> macOS installer
+          The image contains a trimmed Java runtime (jlink), so no Java installation is needed on the target machine.
+          Two launchers are created: "PostFX" (desktop app) and "postfx-cli" (console, for "run", "convert", "export-java").
+          Native packages must be built on the target OS.
+        -->
+        <profile>
+            <id>native</id>
+            <properties>
+                <jpackage.type>app-image</jpackage.type>
+                <jpackage.name>PostFX</jpackage.name>
+                <!-- numeric version required by jpackage, derived from project.version (1.0.0-SNAPSHOT -> 1.0.0) -->
+                <jpackage.version>${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.incrementalVersion}</jpackage.version>
+                <jpackage.dest>${project.build.directory}/native</jpackage.dest>
+                <jpackage.input>${project.build.directory}/jpackage-input</jpackage.input>
+                <jpackage.modules>java.base,java.desktop,java.net.http,java.xml,java.logging,java.management,java.naming,java.sql,java.prefs,java.scripting,java.instrument,jdk.unsupported,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.zipfs,jdk.management,jdk.jfr,jdk.net,jdk.httpserver</jpackage.modules>
+                <skipTests>true</skipTests>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                            <execution>
+                                <id>parse-version</id>
+                                <phase>validate</phase>
+                                <goals><goal>parse-version</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!-- runtime jars + application jar in one input folder -->
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jpackage-input</id>
+                                <phase>package</phase>
+                                <goals><goal>copy-dependencies</goal></goals>
+                                <configuration>
+                                    <outputDirectory>${jpackage.input}</outputDirectory>
+                                    <includeScope>runtime</includeScope>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>jpackage-prepare</id>
+                                <phase>package</phase>
+                                <goals><goal>run</goal></goals>
+                                <configuration>
+                                    <target>
+                                        <copy file="${project.build.directory}/${project.build.finalName}.jar" todir="${jpackage.input}"/>
+                                        <delete dir="${jpackage.dest}/${jpackage.name}" failonerror="false"/>
+                                        <delete dir="${jpackage.dest}/${jpackage.name}.app" failonerror="false"/>
+                                        <mkdir dir="${jpackage.dest}"/>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jpackage</id>
+                                <phase>package</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>${java.home}/bin/jpackage</executable>
+                                    <arguments>
+                                        <argument>--type</argument>
+                                        <argument>${jpackage.type}</argument>
+                                        <argument>--name</argument>
+                                        <argument>${jpackage.name}</argument>
+                                        <argument>--app-version</argument>
+                                        <argument>${jpackage.version}</argument>
+                                        <argument>--vendor</argument>
+                                        <argument>PostFX</argument>
+                                        <argument>--description</argument>
+                                        <argument>API client and test runner</argument>
+                                        <argument>--input</argument>
+                                        <argument>${jpackage.input}</argument>
+                                        <argument>--main-jar</argument>
+                                        <argument>${project.build.finalName}.jar</argument>
+                                        <argument>--main-class</argument>
+                                        <argument>${main.class}</argument>
+                                        <argument>--dest</argument>
+                                        <argument>${jpackage.dest}</argument>
+                                        <argument>--add-modules</argument>
+                                        <argument>${jpackage.modules}</argument>
+                                        <argument>--jlink-options</argument>
+                                        <argument>--strip-debug --no-man-pages --no-header-files</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Dpolyglot.engine.WarnInterpreterOnly=false</argument>
+                                        <argument>--add-launcher</argument>
+                                        <argument>postfx-cli=${project.basedir}/src/main/jpackage/cli-launcher.properties</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Windows installers: shortcut, menu entry and directory chooser -->
+        <profile>
+            <id>native-windows-installer</id>
+            <activation>
+                <property><name>jpackage.type</name><value>msi</value></property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>jpackage</id>
+                                <configuration>
+                                    <arguments combine.children="append">
+                                        <argument>--win-menu</argument>
+                                        <argument>--win-shortcut</argument>
+                                        <argument>--win-dir-chooser</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

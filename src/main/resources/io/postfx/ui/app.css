@@ -1,0 +1,108 @@
+/* PostFX light theme (Modena based) */
+.root {
+    -fx-font-size: 13px;
+    -fx-accent: #ff6c37;
+    -fx-focus-color: #ff6c37;
+    -fx-faint-focus-color: #ff6c3722;
+    -pfx-muted: #6b6b6b;
+    -pfx-panel: #f7f7f8;
+    -pfx-border: #dedede;
+    -pfx-code-bg: #fbfbfc;
+    -pfx-pass: #1e8e3e;
+    -pfx-fail: #d93025;
+    -pfx-warn: #b06000;
+}
+
+.tool-bar { -fx-padding: 4 8 4 8; }
+.status-bar { -fx-background-color: -pfx-panel; -fx-border-color: -pfx-border transparent transparent transparent; }
+
+.hint { -fx-text-fill: -pfx-muted; -fx-font-size: 12px; }
+.section-title { -fx-font-weight: bold; -fx-font-size: 12px; -fx-text-fill: -pfx-muted; }
+.kv-header { -fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: -pfx-muted; }
+.breadcrumb { -fx-text-fill: -pfx-muted; }
+.title-field { -fx-font-size: 15px; -fx-font-weight: bold; -fx-background-color: transparent; -fx-border-color: transparent transparent -pfx-border transparent; }
+.title-field:focused { -fx-border-color: transparent transparent -fx-accent transparent; }
+.mono, .code-area-pfx, .help-code { -fx-font-family: "Consolas", "JetBrains Mono", "Menlo", "Monospaced"; }
+
+.url-field { -fx-font-size: 14px; -fx-font-family: "Consolas", "Menlo", "Monospaced"; -fx-pref-height: 32px; }
+.method-combo { -fx-font-weight: bold; -fx-pref-height: 32px; }
+.resolved-url { -fx-text-fill: -pfx-muted; -fx-font-family: "Consolas", "Menlo", "Monospaced"; -fx-font-size: 11px; }
+.resolved-url.unresolved { -fx-text-fill: -pfx-fail; }
+
+.send-button { -fx-background-color: #ff6c37; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-height: 32px; -fx-padding: 0 18 0 18; -fx-background-radius: 4; }
+.send-button:hover { -fx-background-color: #e85a28; }
+.send-button.cancel { -fx-background-color: #6b6b6b; }
+.icon-button { -fx-background-color: transparent; -fx-text-fill: -pfx-muted; -fx-padding: 2 6 2 6; }
+.icon-button:hover { -fx-text-fill: -pfx-fail; }
+.link-button { -fx-background-color: transparent; -fx-text-fill: #0b6bcb; -fx-underline: true; -fx-padding: 2 4 2 4; -fx-cursor: hand; }
+
+/* method badges */
+.method-badge { -fx-font-size: 10px; -fx-font-weight: bold; -fx-font-family: "Consolas", "Menlo", "Monospaced"; }
+.m-get { -fx-text-fill: #0f9d58; }
+.m-post { -fx-text-fill: #c77c00; }
+.m-put { -fx-text-fill: #1a73e8; }
+.m-patch { -fx-text-fill: #8e44ad; }
+.m-delete { -fx-text-fill: #d93025; }
+.m-head, .m-options { -fx-text-fill: #607d8b; }
+.collection-icon { -fx-text-fill: #ff6c37; }
+.folder-icon { -fx-text-fill: -pfx-muted; }
+.tree-cell.drop-target { -fx-border-color: -fx-accent; -fx-border-width: 0 0 2 0; }
+.active-env { -fx-font-weight: bold; }
+.disabled-var { -fx-text-fill: -pfx-muted; -fx-strikethrough: true; }
+
+/* response */
+.status-label { -fx-font-weight: bold; -fx-padding: 2 8 2 8; -fx-background-radius: 3; }
+.status-label.s2 { -fx-text-fill: white; -fx-background-color: -pfx-pass; }
+.status-label.s3 { -fx-text-fill: white; -fx-background-color: #1a73e8; }
+.status-label.s4 { -fx-text-fill: white; -fx-background-color: #e37400; }
+.status-label.s5, .status-label.serr { -fx-text-fill: white; -fx-background-color: -pfx-fail; }
+.meta-label { -fx-text-fill: -pfx-muted; }
+.segment { -fx-background-radius: 0; -fx-padding: 3 12 3 12; }
+.tab.tab-fail .tab-label { -fx-text-fill: -pfx-fail; }
+.tab.tab-pass .tab-label { -fx-text-fill: -pfx-pass; }
+
+.list-cell.pass, .tree-cell.pass, .label.pass { -fx-text-fill: -pfx-pass; }
+.list-cell.fail, .tree-cell.fail, .label.fail { -fx-text-fill: -pfx-fail; }
+.list-cell.skip, .tree-cell.skip { -fx-text-fill: -pfx-muted; }
+.list-cell.log-warn { -fx-text-fill: -pfx-warn; }
+.list-cell.log-error { -fx-text-fill: -pfx-fail; }
+.list-cell.log-info { -fx-text-fill: #1a73e8; }
+.list-cell:selected.pass, .list-cell:selected.fail, .tree-cell:selected.pass, .tree-cell:selected.fail { -fx-text-fill: white; }
+
+.json-string { -fx-text-fill: #0b7a3b; }
+.json-number { -fx-text-fill: #1a56c7; }
+.json-literal { -fx-text-fill: #a0369a; }
+.tree-cell:selected.json-string, .tree-cell:selected.json-number, .tree-cell:selected.json-literal { -fx-text-fill: white; }
+
+/* code editor */
+.code-area-pfx { -fx-font-size: 13px; -fx-background-color: -pfx-code-bg; }
+.code-area-pfx .lineno { -fx-background-color: -pfx-panel; -fx-text-fill: #9a9a9a; -fx-font-family: "Consolas", "Menlo", "Monospaced"; }
+.code-area-pfx .caret { -fx-stroke: #333333; }
+.code-area-pfx .selection { -fx-fill: #ff6c3744; }
+.code-area-pfx .keyword { -fx-fill: #8b2fc9; -fx-font-weight: bold; }
+.code-area-pfx .string { -fx-fill: #0b7a3b; }
+.code-area-pfx .key { -fx-fill: #a3154a; }
+.code-area-pfx .number { -fx-fill: #1a56c7; }
+.code-area-pfx .literal { -fx-fill: #a0369a; }
+.code-area-pfx .comment { -fx-fill: #8a8a8a; -fx-font-style: italic; }
+.code-area-pfx .variable { -fx-fill: #e85a28; -fx-font-weight: bold; }
+.code-area-pfx .pm { -fx-fill: #c25700; }
+.code-area-pfx .tag { -fx-fill: #1a56c7; }
+.code-area-pfx .text { -fx-fill: #222222; }
+
+/* welcome */
+.welcome-title { -fx-font-size: 34px; -fx-font-weight: bold; -fx-text-fill: #ff6c37; }
+.welcome-subtitle { -fx-font-size: 15px; -fx-text-fill: -pfx-muted; }
+.card { -fx-background-color: -pfx-panel; -fx-border-color: -pfx-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 12; -fx-cursor: hand; }
+.card:hover { -fx-border-color: -fx-accent; }
+.card-title { -fx-font-size: 14px; -fx-font-weight: bold; }
+.about-version { -fx-font-size: 15px; -fx-font-weight: bold; }
+
+/* help */
+.help-page { -fx-background-color: -fx-background; }
+.help-h1 { -fx-font-size: 24px; -fx-font-weight: bold; -fx-text-fill: #ff6c37; }
+.help-h2 { -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 8 0 0 0; }
+.help-normal { -fx-font-size: 13.5px; -fx-fill: -fx-text-background-color; }
+.help-bold { -fx-font-size: 13.5px; -fx-font-weight: bold; -fx-fill: -fx-text-background-color; }
+.help-inline-code { -fx-font-family: "Consolas", "Menlo", "Monospaced"; -fx-font-size: 13px; -fx-fill: #c25700; }
+.help-code { -fx-background-color: -pfx-code-bg; -fx-border-color: -pfx-border; -fx-padding: 10; -fx-font-size: 12.5px; }
