@@ -63,7 +63,7 @@ public final class BuildInfo {
         return get(GIT, "git.closest.tag.name", "");
     }
 
-    /** e.g. "1.0.0 (a1b2c3d)" or "1.0.0 (a1b2c3d, modified)". */
+    /** e.g. "0.5.0 (a1b2c3d)" or "0.5.0 (a1b2c3d, modified)". */
     public static String shortVersion() {
         String c = commit();
         if (c.equals("unknown")) return version();

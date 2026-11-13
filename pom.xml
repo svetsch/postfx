@@ -6,7 +6,7 @@
 
     <groupId>io.postfx</groupId>
     <artifactId>postfx</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.5.0</version>
     <name>PostFX</name>
     <description>API client and test runner (Postman compatible) built with OpenJFX</description>
 
@@ -216,7 +216,7 @@
             <properties>
                 <jpackage.type>app-image</jpackage.type>
                 <jpackage.name>PostFX</jpackage.name>
-                <!-- numeric version required by jpackage, derived from project.version (1.0.0-SNAPSHOT -> 1.0.0) -->
+                <!-- numeric version required by jpackage, derived from project.version (0.5.0-SNAPSHOT -> 0.5.0) -->
                 <jpackage.version>${parsedVersion.majorVersion}.${parsedVersion.minorVersion}.${parsedVersion.incrementalVersion}</jpackage.version>
                 <jpackage.dest>${project.build.directory}/native</jpackage.dest>
                 <jpackage.input>${project.build.directory}/jpackage-input</jpackage.input>

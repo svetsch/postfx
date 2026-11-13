@@ -20,7 +20,7 @@ import java.util.UUID;
 
 /** Turns a model {@link Request} into a {@link ResolvedRequest}: variables, auth, body encoding. */
 public final class RequestPreparer {
-    public static final String USER_AGENT = "PostFX/1.0";
+    public static final String USER_AGENT = "PostFX/" + io.postfx.BuildInfo.version();
 
     private RequestPreparer() {}
 

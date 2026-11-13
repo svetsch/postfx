@@ -1,0 +1,158 @@
+name: Build and release
+
+# - every push to main: tests + Windows native application image (downloadable artifact)
+# - pushing a tag vX.Y.Z (matching the pom version): same build, then a GitHub Release with the Windows image attached
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history: commit and closest tag for the About box
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build and test
+        run: mvn -B verify
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=$(mvn -q -B help:evaluate -Dexpression=project.version -DforceStdout)
+          if [ "v$VERSION" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match the pom version $VERSION"
+            exit 1
+          fi
+
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+
+  native:
+    name: Native image (${{ matrix.platform }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+          # Other platforms are supported by the build; uncomment to release them too
+          # - os: ubuntu-latest
+          #   platform: linux-x64
+          # - os: macos-latest
+          #   platform: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Project version
+        shell: bash
+        run: |
+          VERSION=$(mvn -q -B help:evaluate -Dexpression=project.version -DforceStdout)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          # macOS bundle versions must start with a number > 0; the app itself still reports $VERSION
+          if [ "$RUNNER_OS" = "macOS" ] && [ "${VERSION%%.*}" = "0" ]; then
+            echo "JPACKAGE_ARGS=-Djpackage.version=1.0.0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build native image
+        shell: bash
+        run: mvn -B -Pnative package $JPACKAGE_ARGS
+
+      - name: Smoke test the command line launcher
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) CLI="target/native/PostFX/postfx-cli.exe" ;;
+            macOS)   CLI="target/native/PostFX.app/Contents/MacOS/postfx-cli" ;;
+            *)       CLI="target/native/PostFX/bin/postfx-cli" ;;
+          esac
+          "$CLI" --version
+
+      - name: Archive
+        shell: bash
+        run: |
+          NAME="postfx-${VERSION}-${{ matrix.platform }}"
+          mkdir -p dist
+          cd target/native
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a -tzip "../../dist/${NAME}.zip" PostFX > /dev/null
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            ditto -c -k --keepParent PostFX.app "../../dist/${NAME}.zip"
+          else
+            tar czf "../../dist/${NAME}.tar.gz" PostFX
+          fi
+          ls -l ../../dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: postfx-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="## ${VERSION}" '$0 == v {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md > release-notes.md
+          cat >> release-notes.md <<'EOF'
+
+          ### Download (Windows x64)
+          Unzip `postfx-*-windows-x64.zip` anywhere and start:
+          - `PostFX\PostFX.exe` for the desktop application
+          - `PostFX\postfx-cli.exe` for the command line (`postfx-cli --help`)
+
+          A Java runtime is included, nothing else needs to be installed. The executables are not code-signed,
+          so Windows SmartScreen may ask for confirmation on first start (More info > Run anyway).
+          EOF
+          cat release-notes.md
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PostFX ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: dist/*
+          fail_on_unmatched_files: true

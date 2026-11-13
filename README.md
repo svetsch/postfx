@@ -16,10 +16,10 @@ An API client and test runner built with **Java 21 + OpenJFX**, compatible with 
 Requirements: JDK 21 and Maven 3.9.
 
 ```bash
-mvn package                 # build + tests -> target/postfx-1.0.0-SNAPSHOT.jar and target/lib/
+mvn package                 # build + tests -> target/postfx-<version>.jar and target/lib/
 mvn exec:java               # start the desktop application from the sources
-java -jar target/postfx-1.0.0-SNAPSHOT.jar            # start the desktop application
-java -jar target/postfx-1.0.0-SNAPSHOT.jar --version  # version, git commit, build date
+java -jar target/postfx-<version>.jar            # start the desktop application
+java -jar target/postfx-<version>.jar --version  # version, git commit, build date
 ```
 
 The workspace is stored in `~/.postfx/workspace.json` (override the folder with `-Dpostfx.home=...`).
@@ -49,7 +49,7 @@ postfx-cli export-java collection.json -o ./api-tests --package com.acme.tests -
 postfx-cli --version
 ```
 
-Use `java -jar target/postfx-1.0.0-SNAPSHOT.jar <command>` when running from the jar. The exit code is `0` when every test passed.
+Use `java -jar target/postfx-<version>.jar <command>` when running from the jar. The exit code is `0` when every test passed.
 
 ## Version and commit
 
@@ -73,3 +73,15 @@ The commit is recorded by `git-commit-id-maven-plugin` once the repository has a
 mvn test
 mvn exec:java -Dexec.classpathScope=test -Dexec.mainClass=io.postfx.UiSmoke -Dexec.args=target/ui-smoke   # UI smoke run with screenshots
 ```
+
+## Continuous integration and releases
+
+`.github/workflows/build.yml` runs the tests and builds the Windows native image on every push to `main` (downloadable as a workflow artifact). Linux and macOS entries are present in the build matrix, commented out.
+To publish a release, set the version in `pom.xml`, add a section to `CHANGELOG.md`, then push a matching tag:
+
+```bash
+git tag v0.5.0
+git push origin v0.5.0
+```
+
+The workflow checks that the tag matches the pom version and creates the GitHub Release with the release notes from the changelog and the Windows native archive (`postfx-<version>-windows-x64.zip`).

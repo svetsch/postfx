@@ -60,7 +60,7 @@ public final class PostmanExporter {
             v.put("enabled", kv.enabled);
         }
         root.put("_postman_variable_scope", "environment");
-        root.put("_postman_exported_using", "PostFX/1.0");
+        root.put("_postman_exported_using", "PostFX/" + io.postfx.BuildInfo.version());
         return root;
     }
 
