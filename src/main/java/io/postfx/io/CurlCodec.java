@@ -200,8 +200,8 @@ public final class CurlCodec {
             switch (effectiveAuth.type) {
                 case BASIC -> sb.append(" \\\n  --user ").append(q(v.resolve(effectiveAuth.username) + ":" + v.resolve(effectiveAuth.password)));
                 case BEARER -> sb.append(" \\\n  --header ").append(q("Authorization: Bearer " + v.resolve(effectiveAuth.token)));
-                case OAUTH2 -> {
-                    String token = v.resolve(effectiveAuth.oauth2.accessToken);
+                case OAUTH2, OIDC -> {
+                    String token = v.resolve(effectiveAuth.oauth2.tokenForRequests());
                     if (token != null && !token.isBlank()) {
                         if ("query".equals(effectiveAuth.oauth2.addTokenTo)) {
                             sb.append(" \\\n  --url-query ").append(q(effectiveAuth.oauth2.queryParamName + "=" + token));

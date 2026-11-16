@@ -234,12 +234,14 @@ public final class JavaTestExporter {
                 if ("query".equals(auth.apiIn)) sb.append("                .queryParam(").append(val(auth.apiKey)).append(", ").append(val(auth.apiValue)).append(")\n");
                 else sb.append("                .header(").append(val(auth.apiKey)).append(", ").append(val(auth.apiValue)).append(")\n");
             }
-            case OAUTH2 -> {
+            case OAUTH2, OIDC -> {
                 io.postfx.model.OAuth2 oa = auth.oauth2;
                 String token;
                 if (!oa.isInteractive()) {
                     // client credentials / password: the test fetches (and caches) its own token
-                    token = "oauthToken(" + val(oa.accessTokenUrl) + ", " + s(oa.grantType) + ", " + val(oa.clientId) + ", "
+                    String tokenUrl = (oa.accessTokenUrl == null || oa.accessTokenUrl.isBlank()) && oa.discoveryUrl != null && !oa.discoveryUrl.isBlank()
+                            ? "discoverTokenEndpoint(" + val(oa.discoveryUrl) + ")" : val(oa.accessTokenUrl);
+                    token = "oauthToken(" + tokenUrl + ", " + s(oa.grantType) + ", " + val(oa.clientId) + ", "
                             + val(oa.clientSecret) + ", " + val(oa.scope) + ", " + val(oa.audience) + ", " + val(oa.username) + ", "
                             + val(oa.password) + ", " + !"body".equals(oa.clientAuthentication) + ")";
                 } else {
@@ -492,6 +494,13 @@ public final class JavaTestExporter {
                         assertEquals(200, r.statusCode(), "OAuth 2.0 token request failed: " + r.asString());
                         return r.jsonPath().getString("access_token");
                     });
+                }
+
+                /** OpenID Connect: token endpoint read from the provider's discovery document. */
+                static String discoverTokenEndpoint(String issuerOrUrl) {
+                    String url = issuerOrUrl.contains("/.well-known/") ? issuerOrUrl
+                            : issuerOrUrl.replaceAll("/+$", "") + "/.well-known/openid-configuration";
+                    return given().accept("application/json").get(url).jsonPath().getString("token_endpoint");
                 }
 
                 /** Value at a GPath ("data.items[0].id", "$" for the root), null when missing. */

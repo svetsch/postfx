@@ -36,6 +36,17 @@ public class OAuth2 {
     /** Fetch / refresh the token automatically before a request when it is missing or expired. */
     public boolean autoRefresh = true;
 
+    // ---- OpenID Connect
+    /** Issuer URL or full ".well-known/openid-configuration" URL (OpenID Connect only). */
+    public String discoveryUrl = "";
+    /** Token added to requests: "access_token" (default) or "id_token". */
+    public String tokenToSend = "access_token";
+    /** Values read from the discovery document. */
+    public String issuer = "";
+    public String userInfoUrl = "";
+    public String endSessionUrl = "";
+    public String jwksUri = "";
+
     // ---- current token
     public String accessToken = "";
     public String refreshToken = "";
@@ -63,6 +74,13 @@ public class OAuth2 {
     @JsonIgnore
     public boolean hasToken() {
         return accessToken != null && !accessToken.isBlank();
+    }
+
+    /** The token to put on requests (access token, or ID token for OpenID Connect when chosen). */
+    @JsonIgnore
+    public String tokenForRequests() {
+        if ("id_token".equals(tokenToSend) && idToken != null && !idToken.isBlank()) return idToken;
+        return accessToken;
     }
 
     public void clearToken() {

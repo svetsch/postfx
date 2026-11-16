@@ -51,6 +51,11 @@ public class UiSmoke extends Application {
         items.checks.add(new io.postfx.model.Check(io.postfx.model.CheckSource.JSON_PATH, "$[0].name", io.postfx.model.CheckOperator.EQUALS, "a"));
         items.testScript = "pm.test('two items', () => pm.expect(pm.response.json()).to.have.lengthOf(2));\npm.test('fails on purpose', () => pm.expect(1).to.eql(2));";
         local.items.add(items);
+        RequestItem xmlOrders = new RequestItem("XML orders", "POST", "{{baseUrl}}/xml");
+        xmlOrders.request.body.mode = io.postfx.model.BodyMode.RAW;
+        xmlOrders.request.body.rawLanguage = "xml";
+        xmlOrders.request.body.raw = "<query><customer id=\"42\"/><status>open</status><limit>10</limit></query>";
+        local.items.add(xmlOrders);
         ws.collections.add(0, local);
         Collection oauth = new Collection("OAuth API");
         oauth.variables.add(new KeyValue("baseUrl", server.url()));
@@ -65,6 +70,13 @@ public class UiSmoke extends Application {
         secure.checks.add(new io.postfx.model.Check(io.postfx.model.CheckSource.STATUS, "", io.postfx.model.CheckOperator.EQUALS, "200"));
         oauth.items.add(secure);
         ws.collections.add(oauth);
+        Collection oidc = new Collection("OIDC API");
+        oidc.auth = new io.postfx.model.Auth(io.postfx.model.AuthType.OIDC);
+        oidc.auth.oauth2.grantType = io.postfx.model.OAuth2.AUTHORIZATION_CODE_PKCE;
+        oidc.auth.oauth2.discoveryUrl = server.url();
+        oidc.auth.oauth2.clientId = "app";
+        oidc.auth.oauth2.scope = "";
+        ws.collections.add(oidc);
         AppContext ctx = new AppContext(ws, store);
         MainWindow w = new MainWindow(ctx, stage, true);
         stage.show();
@@ -122,7 +134,42 @@ public class UiSmoke extends Application {
             snap(stage.getScene(), "9-oauth-request.png");
             System.out.println("OAuth token: " + oauth.auth.oauth2.accessToken);
         });
-        step(26000, () -> {
+        step(25500, () -> {
+            w.openFolder(oidc);
+            stage.getScene().getRoot().lookupAll(".tab-pane").forEach(n -> {
+                var tp = (javafx.scene.control.TabPane) n;
+                tp.getTabs().stream().filter(t -> t.getText().equals("Auth")).findFirst().ifPresent(t -> tp.getSelectionModel().select(t));
+            });
+        });
+        step(26500, () -> stage.getScene().getRoot().lookupAll(".button").stream()
+                .filter(n -> n instanceof javafx.scene.control.Button b && "Discover".equals(b.getText()) && b.isVisible() && b.getScene() != null)
+                .findFirst().ifPresent(n -> ((javafx.scene.control.Button) n).fire()));
+        step(28000, () -> {
+            snap(stage.getScene(), "10-oidc.png");
+            System.out.println("OIDC token URL: " + oidc.auth.oauth2.accessTokenUrl);
+        });
+        step(28500, () -> {
+            w.setDark(true);
+            w.openRequest(secure);
+        });
+        step(29500, () -> snap(stage.getScene(), "11-dark-oauth-request.png"));
+        step(30000, () -> {
+            w.setDark(false);
+            w.openRequest(xmlOrders);
+            stage.getScene().getRoot().lookupAll(".tab-pane").forEach(n -> {
+                var tp = (javafx.scene.control.TabPane) n;
+                tp.getTabs().stream().filter(t -> t.getText().startsWith("Body")).findFirst().ifPresent(t -> tp.getSelectionModel().select(t));
+            });
+        });
+        step(31000, () -> stage.getScene().getRoot().lookupAll(".button").stream()
+                .filter(n -> n instanceof javafx.scene.control.Button b && "Beautify".equals(b.getText()) && b.isVisible() && b.getScene() != null)
+                .findFirst().ifPresent(n -> ((javafx.scene.control.Button) n).fire()));
+        step(31500, () -> sendAccelerator(stage.getScene()));
+        step(33500, () -> {
+            snap(stage.getScene(), "12-xml.png");
+            System.out.println("XML body after Beautify: " + xmlOrders.request.body.raw.replace("\n", "\\n"));
+        });
+        step(34500, () -> {
             System.out.println("Items in sample: " + Items.flatten(ws.collections.get(1)).size());
             System.out.println("Active environment: " + ctx.activeEnvironment.get());
             System.out.println("SMOKE OK");

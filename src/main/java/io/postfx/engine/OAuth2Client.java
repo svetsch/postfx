@@ -52,15 +52,32 @@ public class OAuth2Client {
     private final Settings settings;
     private final AtomicReference<LoopbackReceiver> pending = new AtomicReference<>();
 
+    /** OpenID Connect mode: discovery, "openid" scope, nonce and ID token checks. */
+    private boolean openId;
+    /** Nonce sent in the current authorization request (checked against the ID token). */
+    private String expectedNonce;
+
     public OAuth2Client(HttpEngine http, Settings settings) {
         this.http = http;
         this.settings = settings;
+    }
+
+    /** Enables OpenID Connect behaviour; returns this client. */
+    public OAuth2Client openId(boolean enabled) {
+        this.openId = enabled;
+        return this;
+    }
+
+    public static OAuth2Client forAuth(HttpEngine http, Settings settings, io.postfx.model.Auth auth) {
+        return new OAuth2Client(http, settings).openId(auth != null && auth.type == io.postfx.model.AuthType.OIDC);
     }
 
     // ------------------------------------------------------------------ public API
 
     /** Obtains a new token with the configured grant and stores it into {@code cfg}. */
     public void obtain(OAuth2 cfg, VariableContext vars, Interaction interaction, Consumer<String> log) throws OAuth2Exception {
+        discoverIfNeeded(cfg, vars, log);
+        expectedNonce = null;
         String grant = cfg.grantType == null ? OAuth2.CLIENT_CREDENTIALS : cfg.grantType;
         switch (grant) {
             case OAuth2.CLIENT_CREDENTIALS -> {
@@ -85,10 +102,12 @@ public class OAuth2Client {
     /** Uses the refresh token to get a new access token. */
     public void refresh(OAuth2 cfg, VariableContext vars, Consumer<String> log) throws OAuth2Exception {
         if (cfg.refreshToken == null || cfg.refreshToken.isBlank()) throw new OAuth2Exception("No refresh token available");
+        discoverIfNeeded(cfg, vars, log);
+        expectedNonce = null;
         Map<String, String> form = new LinkedHashMap<>();
         form.put("grant_type", "refresh_token");
         form.put("refresh_token", cfg.refreshToken);
-        String scope = vars.resolve(cfg.scope);
+        String scope = effectiveScope(cfg, vars);
         if (scope != null && !scope.isBlank()) form.put("scope", scope);
         String url = cfg.refreshTokenUrl != null && !cfg.refreshTokenUrl.isBlank() ? cfg.refreshTokenUrl : cfg.accessTokenUrl;
         tokenRequest(cfg, vars, form, url(url, vars, "Access Token URL"), log, true);
@@ -147,14 +166,16 @@ public class OAuth2Client {
         String state = vars.resolve(cfg.state);
         if (state == null || state.isBlank()) state = random(16);
         String verifier = cfg.isPkce() ? random(48) : null;
+        String nonce = openId ? random(16) : null;
 
         Map<String, String> q = new LinkedHashMap<>();
-        q.put("response_type", implicit ? "token" : "code");
+        q.put("response_type", implicit ? (openId ? "id_token token" : "token") : "code");
         q.put("client_id", vars.resolve(cfg.clientId));
         q.put("redirect_uri", redirect);
-        String scope = vars.resolve(cfg.scope);
+        String scope = effectiveScope(cfg, vars);
         if (scope != null && !scope.isBlank()) q.put("scope", scope);
         q.put("state", state);
+        if (nonce != null) q.put("nonce", nonce);
         String audience = vars.resolve(cfg.audience);
         if (audience != null && !audience.isBlank()) q.put("audience", audience);
         if (verifier != null) {
@@ -206,8 +227,10 @@ public class OAuth2Client {
         if (params.containsKey("state") && !state.equals(params.get("state"))) {
             throw new OAuth2Exception("State mismatch in the OAuth 2.0 callback (possible CSRF): expected " + state);
         }
+        expectedNonce = nonce;
         if (implicit) {
             if (!params.containsKey("access_token")) throw new OAuth2Exception("No access_token in the callback URL");
+            validateIdToken(params.get("id_token"), cfg, vars.resolve(cfg.clientId));
             store(cfg, params, false);
             log.accept("OAuth 2.0 token received (implicit)");
             return;
@@ -234,7 +257,7 @@ public class OAuth2Client {
     // ------------------------------------------------------------------ token endpoint
 
     private void common(OAuth2 cfg, VariableContext vars, Map<String, String> form) {
-        String scope = vars.resolve(cfg.scope);
+        String scope = effectiveScope(cfg, vars);
         if (scope != null && !scope.isBlank()) form.put("scope", scope);
         String audience = vars.resolve(cfg.audience);
         if (audience != null && !audience.isBlank()) form.put("audience", audience);
@@ -273,6 +296,7 @@ public class OAuth2Client {
         if (!values.containsKey("access_token")) {
             throw new OAuth2Exception("No access_token in the token response: " + abbreviate(res.body));
         }
+        validateIdToken(values.get("id_token"), cfg, clientId);
         store(cfg, values, refreshing);
         long secs = cfg.expiresAt > 0 ? Math.max(0, (cfg.expiresAt - System.currentTimeMillis()) / 1000) : -1;
         log.accept("OAuth 2.0 token received from " + tokenUrl + (secs >= 0 ? " (expires in " + secs + " s)" : ""));
@@ -302,6 +326,126 @@ public class OAuth2Client {
             // unknown expiry
         }
         cfg.expiresAt = expiresIn > 0 ? System.currentTimeMillis() + expiresIn * 1000 : 0;
+    }
+
+    // ------------------------------------------------------------------ OpenID Connect
+
+    /** The discovery document URL: the given URL, or issuer + "/.well-known/openid-configuration". */
+    public static String wellKnownUrl(String issuerOrUrl) {
+        String u = issuerOrUrl.strip();
+        if (u.contains("/.well-known/")) return u;
+        while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
+        return u + "/.well-known/openid-configuration";
+    }
+
+    /**
+     * Reads the OpenID Provider configuration and fills the endpoints, issuer, client authentication method and PKCE
+     * method into {@code cfg}. Returns a short summary.
+     */
+    public String discover(OAuth2 cfg, VariableContext vars, Consumer<String> log) throws OAuth2Exception {
+        String raw = vars.resolve(cfg.discoveryUrl == null ? "" : cfg.discoveryUrl).strip();
+        if (raw.isEmpty()) throw new OAuth2Exception("The Discovery URL is required (issuer or .well-known/openid-configuration URL)");
+        if (VariableResolver.hasPlaceholders(raw)) throw new OAuth2Exception("The Discovery URL contains undefined variables: " + raw);
+        String url = wellKnownUrl(raw);
+        ResolvedRequest r = new ResolvedRequest();
+        r.method = "GET";
+        r.url = url;
+        r.headers.add(new KeyValue("Accept", "application/json"));
+        r.headers.add(new KeyValue("User-Agent", RequestPreparer.USER_AGENT));
+        HttpResult res = http.send(r, settings);
+        if (res.failed()) throw new OAuth2Exception("Could not read " + url + ": " + res.error);
+        if (res.status >= 400) throw new OAuth2Exception("Discovery document " + url + " answered HTTP " + res.status);
+        JsonNode doc = JsonUtil.tryParse(res.body);
+        if (doc == null || !doc.isObject() || !doc.has("issuer")) {
+            throw new OAuth2Exception(url + " is not an OpenID Connect discovery document");
+        }
+        cfg.issuer = doc.path("issuer").asText("");
+        cfg.authUrl = doc.path("authorization_endpoint").asText(cfg.authUrl);
+        cfg.accessTokenUrl = doc.path("token_endpoint").asText(cfg.accessTokenUrl);
+        cfg.userInfoUrl = doc.path("userinfo_endpoint").asText("");
+        cfg.endSessionUrl = doc.path("end_session_endpoint").asText("");
+        cfg.jwksUri = doc.path("jwks_uri").asText("");
+        java.util.List<String> authMethods = texts(doc.path("token_endpoint_auth_methods_supported"));
+        if (!authMethods.isEmpty()) {
+            if (authMethods.contains("client_secret_basic")) cfg.clientAuthentication = "header";
+            else if (authMethods.contains("client_secret_post")) cfg.clientAuthentication = "body";
+        }
+        java.util.List<String> challenges = texts(doc.path("code_challenge_methods_supported"));
+        if (challenges.contains("S256")) cfg.challengeAlgorithm = "S256";
+        else if (challenges.contains("plain")) cfg.challengeAlgorithm = "plain";
+        if (cfg.scope == null || cfg.scope.isBlank()) {
+            java.util.List<String> scopes = texts(doc.path("scopes_supported"));
+            StringBuilder sb = new StringBuilder("openid");
+            for (String s : java.util.List.of("profile", "email")) if (scopes.contains(s)) sb.append(' ').append(s);
+            cfg.scope = sb.toString();
+        }
+        String summary = "OpenID Connect discovery: issuer " + cfg.issuer + ", token endpoint " + cfg.accessTokenUrl;
+        log.accept(summary);
+        return summary;
+    }
+
+    private void discoverIfNeeded(OAuth2 cfg, VariableContext vars, Consumer<String> log) throws OAuth2Exception {
+        if (!openId || cfg.discoveryUrl == null || cfg.discoveryUrl.isBlank()) return;
+        boolean needsAuthUrl = cfg.isInteractive() && (cfg.authUrl == null || cfg.authUrl.isBlank());
+        boolean needsTokenUrl = !OAuth2.IMPLICIT.equals(cfg.grantType) && (cfg.accessTokenUrl == null || cfg.accessTokenUrl.isBlank());
+        if (needsAuthUrl || needsTokenUrl) discover(cfg, vars, log);
+    }
+
+    /** Scope sent to the server; OpenID Connect always includes "openid". */
+    private String effectiveScope(OAuth2 cfg, VariableContext vars) {
+        String scope = vars.resolve(cfg.scope == null ? "" : cfg.scope).strip();
+        if (openId && !java.util.Arrays.asList(scope.split("\\s+")).contains("openid")) {
+            scope = scope.isEmpty() ? "openid" : "openid " + scope;
+        }
+        return scope;
+    }
+
+    /** Checks nonce, issuer and audience of an ID token (the signature is not verified). */
+    private void validateIdToken(String idToken, OAuth2 cfg, String clientId) throws OAuth2Exception {
+        if (!openId || idToken == null || idToken.isBlank()) return;
+        JsonNode claims = Jwt.payload(idToken);
+        if (claims == null) throw new OAuth2Exception("The ID token is not a valid JWT");
+        if (expectedNonce != null && !expectedNonce.equals(claims.path("nonce").asText(null))) {
+            throw new OAuth2Exception("ID token nonce mismatch (possible replay): expected " + expectedNonce
+                    + ", got " + claims.path("nonce").asText("none"));
+        }
+        if (cfg.issuer != null && !cfg.issuer.isBlank() && claims.has("iss")
+                && !trimSlash(cfg.issuer).equals(trimSlash(claims.get("iss").asText()))) {
+            throw new OAuth2Exception("ID token issuer " + claims.get("iss").asText() + " does not match " + cfg.issuer);
+        }
+        JsonNode aud = claims.get("aud");
+        if (aud != null && clientId != null && !clientId.isBlank()) {
+            boolean ok = aud.isArray() ? texts(aud).contains(clientId) : clientId.equals(aud.asText());
+            if (!ok) throw new OAuth2Exception("ID token audience " + aud + " does not contain the client id " + clientId);
+        }
+    }
+
+    /** Calls the UserInfo endpoint with the access token and returns the response body. */
+    public String userInfo(OAuth2 cfg, VariableContext vars) throws OAuth2Exception {
+        if (!cfg.hasToken()) throw new OAuth2Exception("Get an access token first");
+        if ((cfg.userInfoUrl == null || cfg.userInfoUrl.isBlank()) && cfg.discoveryUrl != null && !cfg.discoveryUrl.isBlank()) {
+            discover(cfg, vars, m -> {});
+        }
+        if (cfg.userInfoUrl == null || cfg.userInfoUrl.isBlank()) throw new OAuth2Exception("The provider has no UserInfo endpoint");
+        ResolvedRequest r = new ResolvedRequest();
+        r.method = "GET";
+        r.url = cfg.userInfoUrl;
+        r.headers.add(new KeyValue("Accept", "application/json"));
+        r.headers.add(new KeyValue("Authorization", "Bearer " + cfg.accessToken));
+        HttpResult res = http.send(r, settings);
+        if (res.failed()) throw new OAuth2Exception("UserInfo request failed: " + res.error);
+        if (res.status >= 400) throw new OAuth2Exception("UserInfo endpoint answered HTTP " + res.status + ": " + abbreviate(res.body));
+        return res.body;
+    }
+
+    private static java.util.List<String> texts(JsonNode arr) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (arr != null && arr.isArray()) arr.forEach(n -> out.add(n.asText()));
+        return out;
+    }
+
+    private static String trimSlash(String s) {
+        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
     }
 
     // ------------------------------------------------------------------ helpers

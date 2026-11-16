@@ -40,6 +40,14 @@ public class TestServer implements AutoCloseable {
             send(ex, 200, sb.toString());
         });
         server.createContext("/items", ex -> send(ex, 200, "[{\"id\":1,\"name\":\"a\"},{\"id\":2,\"name\":\"b\"}]"));
+        server.createContext("/xml", ex -> {
+            byte[] b = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><orders><order id=\"1\"><item sku=\"A-1\" qty=\"2\">Keyboard</item><total currency=\"CHF\">89.90</total></order><order id=\"2\"><item sku=\"B-7\" qty=\"1\">Mouse</item><total currency=\"CHF\">29.00</total></order></orders>"
+                    .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "application/xml; charset=utf-8");
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
         oauth();
         server.start();
     }
@@ -50,6 +58,22 @@ public class TestServer implements AutoCloseable {
     public final java.util.Set<String> validTokens = java.util.concurrent.ConcurrentHashMap.newKeySet();
     public volatile String lastChallenge;
     public volatile int tokenRequests;
+    public volatile String lastNonce;
+    public volatile String lastScope;
+    /** When set, ID tokens carry a wrong nonce (to test the client's replay protection). */
+    public volatile boolean badNonce;
+
+    /** Unsigned ID token for client "app" with the nonce of the last authorization request. */
+    String idToken() {
+        java.util.Base64.Encoder b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+        String header = b64.encodeToString("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
+        String payload = b64.encodeToString(("{\"iss\":\"" + url() + "\",\"aud\":\"app\",\"sub\":\"ada\",\"email\":\"ada@example.com\","
+                + "\"nonce\":\"" + (badNonce ? "forged" : lastNonce) + "\",\"exp\":" + (System.currentTimeMillis() / 1000 + 3600) + "}")
+                .getBytes(StandardCharsets.UTF_8));
+        String jwt = header + "." + payload + ".";
+        validTokens.add(jwt);
+        return jwt;
+    }
 
     private void oauth() {
         server.createContext("/oauth/authorize", ex -> {
@@ -57,9 +81,13 @@ public class TestServer implements AutoCloseable {
             java.util.Map<String, String> p = new java.util.HashMap<>();
             q.forEach(kv -> p.put(kv.key, io.postfx.engine.UrlUtil.decode(kv.value)));
             lastChallenge = p.get("code_challenge");
+            lastNonce = p.get("nonce");
+            lastScope = p.getOrDefault("scope", "");
             String redirect = p.get("redirect_uri");
-            String location = "token".equals(p.get("response_type"))
+            String responseType = p.getOrDefault("response_type", "");
+            String location = responseType.contains("token")
                     ? redirect + "#access_token=imp-token&token_type=bearer&expires_in=600&state=" + p.get("state")
+                    + (responseType.contains("id_token") ? "&id_token=" + idToken() : "")
                     : redirect + "?code=code-123&state=" + p.get("state");
             ex.getResponseHeaders().add("Location", location);
             ex.sendResponseHeaders(302, -1);
@@ -108,8 +136,23 @@ public class TestServer implements AutoCloseable {
                 return;
             }
             validTokens.add(token);
+            String id = "authorization_code".equals(grant) && lastScope != null && lastScope.contains("openid") ? idToken() : null;
             send(ex, 200, "{\"access_token\":\"" + token + "\",\"token_type\":\"Bearer\",\"expires_in\":" + expires
-                    + (refresh == null ? "" : ",\"refresh_token\":\"" + refresh + "\"") + "}");
+                    + (refresh == null ? "" : ",\"refresh_token\":\"" + refresh + "\"")
+                    + (id == null ? "" : ",\"id_token\":\"" + id + "\"") + "}");
+        });
+        server.createContext("/.well-known/openid-configuration", ex -> send(ex, 200, """
+                {"issuer": "%1$s", "authorization_endpoint": "%1$s/oauth/authorize", "token_endpoint": "%1$s/oauth/token",
+                 "userinfo_endpoint": "%1$s/userinfo", "jwks_uri": "%1$s/jwks", "scopes_supported": ["openid", "profile", "email"],
+                 "code_challenge_methods_supported": ["S256"], "token_endpoint_auth_methods_supported": ["client_secret_post"],
+                 "response_types_supported": ["code", "id_token token"]}""".formatted(url())));
+        server.createContext("/userinfo", ex -> {
+            String auth = ex.getRequestHeaders().getFirst("Authorization");
+            if (auth != null && auth.startsWith("Bearer ") && validTokens.contains(auth.substring(7))) {
+                send(ex, 200, "{\"sub\":\"ada\",\"name\":\"Ada Lovelace\",\"email\":\"ada@example.com\"}");
+            } else {
+                send(ex, 401, "{\"error\":\"invalid_token\"}");
+            }
         });
         server.createContext("/secure", ex -> {
             String auth = ex.getRequestHeaders().getFirst("Authorization");

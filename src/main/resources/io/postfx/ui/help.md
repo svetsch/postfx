@@ -33,17 +33,22 @@ Tip: paste a **cURL command** directly into the URL field to import it.
 Headers support `{{variables}}`. PostFX adds `User-Agent`, `Accept`, `Content-Type` (for bodies) and auth headers when you did not set them.
 
 ## Body
-- **raw**: JSON, text, XML, HTML or JavaScript. The language sets the default Content-Type. **Beautify** formats JSON.
+- **raw**: JSON, text, XML, HTML or JavaScript. The language sets the default Content-Type. **Beautify** indents JSON and XML (XML attributes, comments and CDATA are kept as written; a message tells you when the body is not well-formed).
 - **x-www-form-urlencoded**: key/value pairs, encoded for you.
 - **form-data**: multipart; switch a row to **File** to upload a file.
 - **GraphQL**: query + variables (sent as JSON).
 - **binary**: the content of a file.
 
 ## Auth
-Basic, Bearer token, API key (header or query) and **OAuth 2.0** (see the OAuth 2.0 page). New requests use **Inherit auth from parent**: configure auth once on the collection or a folder (double-click it in the tree) and every request below inherits it.
+Basic, Bearer token, API key (header or query), **OAuth 2.0** and **OpenID Connect** (see their pages). New requests use **Inherit auth from parent**: configure auth once on the collection or a folder (double-click it in the tree) and every request below inherits it.
 
 ## Bulk edit
 Key/value tables have a **Bulk edit** toggle: one `key: value` per line, prefix a line with `//` to disable it.
+
+## Response
+The response pane shows the status, time and size, then the tabs **Body** (Pretty: indented JSON or XML; Raw: as received; Tree: JSON tree), **Headers**, **Test Results**, **Console** and **Request** (what was actually sent).
+
+After each send PostFX shows the **response body**. Choose another tab in **Settings › After sending, show**: Test results, Console, Headers, **Automatic** (jumps to the Console when a script fails and to Test Results when a test fails, otherwise the body) or **Keep the last selected tab**. The tab titles always show the test counts (for example "Test Results (3/4)" in red when one fails), so failures stay visible.
 
 ## Code generation
 **</> Code** shows the request as a cURL command, a Java (JUnit + REST Assured) test, or Postman JSON.
@@ -84,6 +89,32 @@ Token requests appear in the response Console. The token is saved with the works
 - Postman collections keep their OAuth 2.0 configuration both ways.
 - OpenAPI / Swagger `oauth2` security schemes become OAuth 2.0 auth (client credentials, authorization code with PKCE, password or implicit, with the scopes of the flow).
 - Java export: Client Credentials and Password grants fetch their token in the generated test (`oauthToken(...)`); for browser flows run the tests with `-Dvar.accessToken=<token>`.
+
+# OpenID Connect
+Choose **OpenID Connect** in the Auth tab to sign in with an identity provider such as Keycloak, Microsoft Entra ID, Auth0, Okta or Google. It works like OAuth 2.0 (same grant types, token renewal and options) with these additions.
+
+## Discovery
+Enter the **Discovery URL**: either the issuer (`https://login.example.com/realms/demo`) or the full `https://…/.well-known/openid-configuration` address, then click **Discover**. PostFX reads the provider's configuration and fills in:
+- the Auth URL and Access Token URL;
+- the issuer, the UserInfo endpoint and the key set address;
+- the client authentication method the provider supports (Basic header or body);
+- the PKCE method (`S256` when available) and a default scope (`openid profile email`).
+
+The Discovery URL accepts `{{variables}}`, e.g. `{{issuer}}` with a different value per environment. When the endpoints are empty, discovery also runs automatically before a token request, in the app, the runner and the command line.
+
+## Sign-in checks
+- The `openid` scope is always requested.
+- A random **nonce** is sent with browser sign-ins and must come back in the ID token (protection against replayed tokens).
+- The ID token's **issuer** must match the discovered issuer and its **audience** must contain the Client ID.
+- The ID token's signature is **not** verified: PostFX is a test tool, the API you call remains responsible for validating tokens.
+
+## ID token and user info
+After sign-in the decoded **ID token claims** are shown (sub, name, email, expiry…). **User info** calls the provider's UserInfo endpoint with the access token. **Token to send** chooses what is added to requests: the access token (usual) or the ID token (for APIs that expect it).
+
+## Import and export
+- OpenAPI `openIdConnect` security schemes become OpenID Connect auth with their discovery URL.
+- Postman has no OpenID Connect type: collections are exported with OAuth 2.0 auth using the discovered endpoints.
+- Java export: Client Credentials tokens are fetched in the test; when only the discovery URL is known the token endpoint is read from it at run time.
 
 # Variables and environments
 Write `{{name}}` anywhere: URL, params, headers, body, auth, checks, extractors.
@@ -272,6 +303,21 @@ Right-click a collection or folder > **Export as Java tests**. PostFX generates 
 
 The **</> Code** button of a request shows the Java code for a single request.
 
+## Markdown test document
+Right-click a collection or folder > **Export test document (Markdown)** (also in the File menu). The document is a readable test plan:
+- a summary table: test case ID, request, method, endpoint and expected result;
+- the configuration: variables (secrets masked), authentication, scripts run for every request;
+- one test case per request: description, method, URL (and the URL resolved with the chosen environment), path variables, query parameters, headers, body, setup script;
+- **expected results**: every enabled check and the name of every `pm.test` of the test script, as a checklist;
+- the values passed to the next test cases (extractors), so the chain is documented;
+- optionally a Pass / Fail line per test case for manual testing.
+
+Literal passwords, tokens and secrets are never written; `{{variable}}` references are shown instead.
+
+After a run, **Runner › Export results › Markdown test report** writes the same document with the actual results: ✅ / ❌ per expected result with the failure message, status, response time and a run summary.
+
+Command line: `postfx-cli export-md collection.json -o tests.md -e env.json`, or `--reporter-md report.md` on `run`.
+
 # Command line
 The same jar runs collections headless, e.g. in CI:
 ```
@@ -280,6 +326,8 @@ java -jar postfx.jar run openapi.yaml --env-var baseUrl=http://localhost:8080
 java -jar postfx.jar run collection.json -d data.csv --folder "Smoke tests" --bail
 java -jar postfx.jar convert openapi.yaml -o api.postman_collection.json
 java -jar postfx.jar export-java collection.json -o ./api-tests --package com.acme.tests
+java -jar postfx.jar export-md collection.json -o test-plan.md -e dev.postman_environment.json
+java -jar postfx.jar run collection.json --reporter-md test-report.md
 ```
 The exit code is 0 when every test passed and 1 otherwise. Run `java -jar postfx.jar help` for all options.
 

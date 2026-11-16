@@ -253,7 +253,8 @@ public final class PostmanExporter {
                 kv(p, "value", a.apiValue);
                 kv(p, "in", a.apiIn);
             }
-            case OAUTH2 -> {
+            case OAUTH2, OIDC -> {
+                // Postman has no OpenID Connect type: export the discovered endpoints as OAuth 2.0
                 o.put("type", "oauth2");
                 ArrayNode p = o.putArray("oauth2");
                 io.postfx.model.OAuth2 c = a.oauth2;

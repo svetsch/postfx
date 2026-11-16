@@ -102,6 +102,7 @@ public class MainWindow {
         scene = new Scene(root, 1360, 860);
         scene.getStylesheets().add(APP_CSS);
         setDark(ctx.workspace.settings.darkTheme);
+        themeSecondaryWindows();
         shortcuts();
         dragAndDropImport();
 
@@ -129,13 +130,14 @@ public class MainWindow {
         MenuItem expPostman = item("Export collection (Postman v2.1)…", null, () -> withCollection(c -> Dialogs.exportPostman(ctx, c)));
         MenuItem expJava = item("Export collection as Java tests…", null, () -> withCollection(c -> Dialogs.exportJava(ctx, c, null)));
         MenuItem expGlobals = item("Export globals (Postman)…", null, () -> Dialogs.exportGlobals(ctx));
+        MenuItem expMd = item("Export test document (Markdown)…", null, () -> withCollection(c -> Dialogs.exportMarkdown(ctx, c, null, null)));
         MenuItem save = item("Save", "Ctrl+S", this::saveCurrent);
         MenuItem settings = item("Settings…", null, () -> Dialogs.settings(ctx));
         MenuItem exit = item("Exit", null, () -> {
             ctx.shutdown();
             Platform.exit();
         });
-        file.getItems().addAll(newReq, newColl, new SeparatorMenuItem(), imp, impText, new SeparatorMenuItem(), expPostman, expJava,
+        file.getItems().addAll(newReq, newColl, new SeparatorMenuItem(), imp, impText, new SeparatorMenuItem(), expPostman, expJava, expMd,
                 expGlobals, new SeparatorMenuItem(), save, settings, new SeparatorMenuItem(), exit);
 
         Menu run = new Menu("Run");
@@ -169,6 +171,7 @@ public class MainWindow {
 
     private ToolBar toolBar() {
         Button newReq = new Button("+ New request");
+        newReq.getStyleClass().add("primary");
         newReq.setOnAction(e -> newRequest());
         newReq.setTooltip(new Tooltip("Ctrl+T"));
         Button imp = new Button("⇩ Import");
@@ -324,6 +327,25 @@ public class MainWindow {
         ctx.workspace.settings.darkTheme = value;
         scene.getStylesheets().remove(DARK_CSS);
         if (value) scene.getStylesheets().add(DARK_CSS);
+        // keep the other open windows (help, dialogs) on the same theme
+        for (javafx.stage.Window w : List.copyOf(javafx.stage.Window.getWindows())) {
+            if (w != stage && w instanceof Stage && w.getScene() != null) w.getScene().getStylesheets().setAll(scene.getStylesheets());
+        }
+    }
+
+    /** Dialogs, alerts and secondary windows get the application stylesheets and icon when they open. */
+    private void themeSecondaryWindows() {
+        javafx.stage.Window.getWindows().addListener((javafx.collections.ListChangeListener<javafx.stage.Window>) change -> {
+            while (change.next()) {
+                for (javafx.stage.Window w : change.getAddedSubList()) {
+                    if (w == stage || !(w instanceof Stage) || w.getScene() == null) continue;
+                    if (!w.getScene().getStylesheets().containsAll(scene.getStylesheets())) {
+                        w.getScene().getStylesheets().setAll(scene.getStylesheets());
+                    }
+                    AppIcons.apply(w);
+                }
+            }
+        });
     }
 
     // ------------------------------------------------------------------ tabs
@@ -484,7 +506,8 @@ public class MainWindow {
         d.getStyleClass().add("hint");
         VBox card = new VBox(6, t, d);
         card.getStyleClass().add("card");
-        card.setPrefSize(290, 96);
+        card.setPrefSize(300, 108);
+        d.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         card.setAlignment(Pos.TOP_LEFT);
         card.setOnMouseClicked(e -> action.run());
         return card;

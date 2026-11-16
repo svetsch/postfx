@@ -239,11 +239,15 @@ public class CollectionTree extends BorderPane {
                 exportPostman.setOnAction(e -> Dialogs.exportPostman(ctx, c));
                 MenuItem exportJava = new MenuItem("Export as Java tests (JUnit + REST Assured)…");
                 exportJava.setOnAction(e -> Dialogs.exportJava(ctx, c, null));
-                m.getItems().addAll(new SeparatorMenuItem(), exportPostman, exportJava);
+                MenuItem exportMd = new MenuItem("Export test document (Markdown)…");
+                exportMd.setOnAction(e -> Dialogs.exportMarkdown(ctx, c, null, null));
+                m.getItems().addAll(new SeparatorMenuItem(), exportPostman, exportJava, exportMd);
             } else {
                 MenuItem exportJava = new MenuItem("Export folder as Java tests…");
                 exportJava.setOnAction(e -> Dialogs.exportJava(ctx, ctx.collectionOf(f), f));
-                m.getItems().addAll(new SeparatorMenuItem(), exportJava);
+                MenuItem exportMd = new MenuItem("Export folder test document (Markdown)…");
+                exportMd.setOnAction(e -> Dialogs.exportMarkdown(ctx, ctx.collectionOf(f), f, null));
+                m.getItems().addAll(new SeparatorMenuItem(), exportJava, exportMd);
             }
         } else if (item instanceof RequestItem r) {
             MenuItem open = new MenuItem("Open");

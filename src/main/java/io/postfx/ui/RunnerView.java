@@ -160,6 +160,7 @@ public class RunnerView extends BorderPane {
         Label orderHint = new Label("Untick to skip; reorder to change the chain. Scripts can jump with pm.execution.setNextRequest().");
         orderHint.getStyleClass().add("hint");
         orderHint.setWrapText(true);
+        orderHint.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         Label settingsTitle = new Label("SETTINGS");
         settingsTitle.getStyleClass().add("section-title");
         run.getStyleClass().add("send-button");
@@ -188,7 +189,11 @@ public class RunnerView extends BorderPane {
         json.setOnAction(e -> exportReport("json"));
         MenuItem text = new MenuItem("Text summary…");
         text.setOnAction(e -> exportReport("txt"));
-        exportReport.getItems().addAll(junit, json, text);
+        MenuItem markdown = new MenuItem("Markdown test report…");
+        markdown.setOnAction(e -> {
+            if (lastReport != null) Dialogs.exportMarkdown(ctx, collection, scope == collection ? null : scope, lastReport);
+        });
+        exportReport.getItems().addAll(markdown, junit, json, text);
         exportReport.setDisable(true);
         Region grow = new Region();
         HBox.setHgrow(grow, Priority.ALWAYS);
@@ -334,7 +339,7 @@ public class RunnerView extends BorderPane {
                     sb.append("HTTP ").append(r.response.status).append(' ').append(r.response.statusText).append("  (")
                             .append(r.response.timeMs).append(" ms)\n");
                     r.response.headers.forEach(h -> sb.append(h.key).append(": ").append(h.value).append('\n'));
-                    String body = io.postfx.engine.JsonUtil.prettyOrSame(r.response.body);
+                    String body = io.postfx.engine.XmlUtil.prettyBody(r.response.body, r.response.contentType());
                     sb.append('\n').append(body.length() > 20000 ? body.substring(0, 20000) + "\n…" : body).append('\n');
                 }
             }

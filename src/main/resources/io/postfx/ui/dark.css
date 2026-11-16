@@ -1,37 +1,77 @@
-/* PostFX dark theme: loaded on top of app.css */
+/* PostFX design system — dark theme: loaded on top of app.css, redefines the colour tokens. */
 .root {
-    -fx-base: #2b2d30;
-    -fx-background: #1f2023;
-    -fx-control-inner-background: #26282b;
-    -fx-control-inner-background-alt: #2a2c30;
-    -fx-text-background-color: #dcdcdc;
-    -fx-mark-color: #dcdcdc;
-    -pfx-muted: #9aa0a6;
-    -pfx-panel: #25272a;
-    -pfx-border: #3a3d42;
-    -pfx-code-bg: #1b1c1f;
-    -pfx-pass: #57c27a;
-    -pfx-fail: #ff6b60;
-    -pfx-warn: #f0b04a;
+    -pfx-accent: #ff7a45;
+    -pfx-accent-hover: #ff8f63;
+    -pfx-accent-pressed: #e8652f;
+    -pfx-accent-text: #1a1b1e;
+    -pfx-accent-soft: #3d2a22;
+    -pfx-accent-soft-strong: #5a3524;
+
+    -pfx-text: #e6e8eb;
+    -pfx-muted: #a4adb7;
+    -pfx-subtle: #7d8590;
+    -pfx-surface: #1e1f22;
+    -pfx-chrome: #25272b;
+    -pfx-control: #2b2d31;
+    -pfx-input: #1a1b1e;
+    -pfx-hover: #30333a;
+    -pfx-pressed: #383c43;
+    -pfx-border: #34373d;
+    -pfx-border-strong: #464a52;
+    -pfx-code-bg: #1a1b1e;
+    -pfx-scroll-thumb: #464a52;
+    -pfx-shadow: rgba(0, 0, 0, 0.45);
+
+    -pfx-pass: #4ac26b;
+    -pfx-fail: #ff7b72;
+    -pfx-warn: #d29922;
+    -pfx-info: #58a6ff;
+    -pfx-link: #58a6ff;
+
+    -fx-base: #25272b;
+    -fx-background: #1e1f22;
+    -fx-control-inner-background: #1e1f22;
+    -fx-control-inner-background-alt: #222326;
+    -fx-text-background-color: #e6e8eb;
+    -fx-mark-color: #e6e8eb;
+    -fx-selection-bar: #3d2a22;
+    -fx-selection-bar-non-focused: #3d2a22;
+    -fx-selection-bar-text: #e6e8eb;
 }
-.link-button { -fx-text-fill: #7fb3ff; }
-.code-area-pfx .caret { -fx-stroke: #e0e0e0; }
-.code-area-pfx .text { -fx-fill: #d8d8d8; }
-.code-area-pfx .keyword { -fx-fill: #cc8cff; }
-.code-area-pfx .string { -fx-fill: #8fd18f; }
-.code-area-pfx .key { -fx-fill: #ff9db5; }
-.code-area-pfx .number { -fx-fill: #79b8ff; }
-.code-area-pfx .literal { -fx-fill: #e39ce0; }
-.code-area-pfx .pm { -fx-fill: #ffab70; }
-.code-area-pfx .tag { -fx-fill: #79b8ff; }
-.code-area-pfx .lineno { -fx-text-fill: #6b6f75; }
-.json-string { -fx-text-fill: #8fd18f; }
-.json-number { -fx-text-fill: #79b8ff; }
-.json-literal { -fx-text-fill: #e39ce0; }
-.m-get { -fx-text-fill: #57c27a; }
-.m-post { -fx-text-fill: #f0b04a; }
-.m-put { -fx-text-fill: #79b8ff; }
-.m-patch { -fx-text-fill: #cc8cff; }
-.m-delete { -fx-text-fill: #ff6b60; }
-.help-inline-code { -fx-fill: #ffab70; }
-.list-cell.log-info { -fx-text-fill: #79b8ff; }
+
+.tooltip { -fx-background-color: #3a3d44; -fx-text-fill: #f0f3f6; }
+
+.method-combo.m-get > .list-cell, .m-get { -fx-text-fill: #4ac26b; }
+.method-combo.m-post > .list-cell, .m-post { -fx-text-fill: #f0883e; }
+.method-combo.m-put > .list-cell, .m-put { -fx-text-fill: #58a6ff; }
+.method-combo.m-patch > .list-cell, .m-patch { -fx-text-fill: #bc8cff; }
+.method-combo.m-delete > .list-cell, .m-delete { -fx-text-fill: #ff7b72; }
+.m-head, .m-options { -fx-text-fill: #8b949e; }
+.method-combo.m-get > .text-field { -fx-text-fill: #4ac26b; }
+.method-combo.m-post > .text-field { -fx-text-fill: #f0883e; }
+.method-combo.m-put > .text-field { -fx-text-fill: #58a6ff; }
+.method-combo.m-patch > .text-field { -fx-text-fill: #bc8cff; }
+.method-combo.m-delete > .text-field { -fx-text-fill: #ff7b72; }
+
+.status-label.s2 { -fx-background-color: #238636; }
+.status-label.s3 { -fx-background-color: #1f6feb; }
+.status-label.s4 { -fx-background-color: #bd561d; }
+.status-label.s5, .status-label.serr { -fx-background-color: #da3633; }
+
+.json-string { -fx-text-fill: #a5d6ff; }
+.json-number { -fx-text-fill: #79c0ff; }
+.json-literal { -fx-text-fill: #d2a8ff; }
+
+.code-area-pfx .selection { -fx-fill: #ff7a4550; }
+.code-area-pfx .text { -fx-fill: #e6e8eb; }
+.code-area-pfx .keyword { -fx-fill: #ff7b72; }
+.code-area-pfx .string { -fx-fill: #a5d6ff; }
+.code-area-pfx .key { -fx-fill: #79c0ff; }
+.code-area-pfx .number { -fx-fill: #79c0ff; }
+.code-area-pfx .literal { -fx-fill: #d2a8ff; }
+.code-area-pfx .comment { -fx-fill: #8b949e; }
+.code-area-pfx .variable { -fx-fill: #ffa657; }
+.code-area-pfx .pm { -fx-fill: #ffa657; }
+.code-area-pfx .tag { -fx-fill: #7ee787; }
+
+.help-inline-code { -fx-fill: #ffa657; }

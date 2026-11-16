@@ -174,6 +174,9 @@ public final class Dialogs {
         Label hint = new Label("cURL uses the current variable values. Copy copies the selected tab.");
         hint.getStyleClass().add("hint");
         VBox box = new VBox(6, hint, tabs);
+        // the code tabs take all the space left by the hint, also when the dialog is resized
+        VBox.setVgrow(tabs, javafx.scene.layout.Priority.ALWAYS);
+        tabs.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
         box.setPrefSize(860, 560);
         d.getDialogPane().setContent(box);
         ButtonType copyBtn = new ButtonType("Copy", ButtonBar.ButtonData.LEFT);
@@ -330,6 +333,72 @@ public final class Dialogs {
         }
     }
 
+    // ------------------------------------------------------------------ Markdown test document
+
+    /** Exports a Markdown test document (test plan), or a test report when {@code report} is given. */
+    public static void exportMarkdown(AppContext ctx, Collection c, Folder scope, io.postfx.engine.RunReport report) {
+        if (c == null) return;
+        Folder root = scope == null ? c : scope;
+        Dialog<ButtonType> d = own(new Dialog<>());
+        d.setTitle(report == null ? "Export test document" : "Export test report");
+        d.setHeaderText((report == null ? "Markdown test document for \"" : "Markdown test report for \"") + root.name + "\"");
+        ComboBox<Environment> env = new ComboBox<>();
+        env.getItems().add(null);
+        env.getItems().addAll(ctx.workspace.environments);
+        env.setValue(ctx.activeEnvironment.get());
+        env.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(Environment e) {
+                return e == null ? "No environment" : e.name;
+            }
+
+            @Override
+            public Environment fromString(String s) {
+                return null;
+            }
+        });
+        CheckBox scripts = new CheckBox("Include pre-request and test scripts (collapsible)");
+        scripts.setSelected(true);
+        CheckBox checklist = new CheckBox("Add check boxes and a result line for manual testing");
+        checklist.setSelected(report == null);
+        checklist.setDisable(report != null);
+        GridPane g = grid();
+        int r = 0;
+        g.addRow(r++, new Label("Variables from"), env);
+        g.add(scripts, 0, r++, 2, 1);
+        g.add(checklist, 0, r++, 2, 1);
+        Label hint = new Label(report == null
+                ? "One test case per request: request details, expected results (checks and pm.test names) and the values passed to the next requests."
+                : "The test cases with the actual results of the last run (✅ / ❌, status, time and failure messages).");
+        hint.getStyleClass().add("hint");
+        hint.setWrapText(true);
+        hint.setMaxWidth(460);
+        g.add(hint, 0, r, 2, 1);
+        d.getDialogPane().setContent(g);
+        d.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        if (d.showAndWait().filter(b -> b == ButtonType.OK).isEmpty()) return;
+
+        io.postfx.io.MarkdownExporter.Options o = new io.postfx.io.MarkdownExporter.Options();
+        o.environment = env.getValue();
+        o.globals = ctx.workspace.globals;
+        o.includeScripts = scripts.isSelected();
+        o.checklist = checklist.isSelected();
+        o.report = report;
+        FileChooser fc = new FileChooser();
+        fc.setTitle("Save the Markdown document");
+        fc.setInitialFileName((root.name + (report == null ? " - test document" : " - test report") + ".md").replaceAll("[\\\\/:*?\"<>|]", "_"));
+        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("Markdown", "*.md"));
+        File f = fc.showSaveDialog(owner);
+        if (f == null) return;
+        try {
+            Files.writeString(f.toPath(), io.postfx.io.MarkdownExporter.generate(c, scope, o), StandardCharsets.UTF_8);
+            ctx.status.set("Markdown document written to " + f);
+            info("Markdown document exported", f.toString());
+        } catch (Exception e) {
+            error("Export failed", e.getMessage());
+        }
+    }
+
     // ------------------------------------------------------------------ import from text / URL
 
     /** Paste dialog: returns the pasted content (cURL, JSON or YAML) or a URL to fetch. */
@@ -369,12 +438,35 @@ public final class Dialogs {
         CheckBox ssl = new CheckBox("Verify SSL certificates");
         ssl.setSelected(s.verifySsl);
         CheckBox dark = new CheckBox("Dark theme");
+        java.util.Map<String, String> tabChoices = new java.util.LinkedHashMap<>();
+        tabChoices.put(Settings.RESPONSE_TAB_BODY, "Response body");
+        tabChoices.put(Settings.RESPONSE_TAB_TESTS, "Test results");
+        tabChoices.put(Settings.RESPONSE_TAB_CONSOLE, "Console");
+        tabChoices.put(Settings.RESPONSE_TAB_HEADERS, "Headers");
+        tabChoices.put(Settings.RESPONSE_TAB_AUTO, "Automatic (failed tests or script errors first)");
+        tabChoices.put(Settings.RESPONSE_TAB_KEEP, "Keep the last selected tab");
+        ComboBox<String> responseTab = new ComboBox<>();
+        responseTab.getItems().addAll(tabChoices.keySet());
+        responseTab.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(String key) {
+                return key == null ? "" : tabChoices.getOrDefault(key, key);
+            }
+
+            @Override
+            public String fromString(String s) {
+                return s;
+            }
+        });
+        responseTab.setValue(tabChoices.containsKey(s.responseTab) ? s.responseTab : Settings.RESPONSE_TAB_BODY);
+        responseTab.setTooltip(new javafx.scene.control.Tooltip("Response tab shown after sending a request"));
         dark.setSelected(ctx.main().isDark());
         GridPane g = grid();
         int r = 0;
         g.addRow(r++, new Label("Request timeout (ms)"), timeout);
         g.addRow(r++, new Label("Script timeout (ms)"), scriptTimeout);
         g.addRow(r++, new Label("History size"), history);
+        g.addRow(r++, new Label("After sending, show"), responseTab);
         g.add(redirects, 0, r++, 2, 1);
         g.add(ssl, 0, r++, 2, 1);
         g.add(dark, 0, r++, 2, 1);
@@ -389,6 +481,7 @@ public final class Dialogs {
         s.historyLimit = history.getValue();
         s.followRedirects = redirects.isSelected();
         s.verifySsl = ssl.isSelected();
+        s.responseTab = responseTab.getValue();
         ctx.main().setDark(dark.isSelected());
         ctx.changed();
     }

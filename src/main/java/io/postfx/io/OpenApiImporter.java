@@ -145,12 +145,12 @@ public final class OpenApiImporter {
                 }
                 case "oauth2" -> a = oauth2(c, s);
                 case "openIdConnect" -> {
-                    a = new Auth(AuthType.OAUTH2);
+                    a = new Auth(AuthType.OIDC);
                     a.oauth2.grantType = io.postfx.model.OAuth2.AUTHORIZATION_CODE_PKCE;
                     a.oauth2.clientId = "{{clientId}}";
+                    a.oauth2.discoveryUrl = s.path("openIdConnectUrl").asText("");
+                    a.oauth2.scope = "openid";
                     addVar(c, "clientId");
-                    warnings.add("OpenID Connect scheme '" + e.getKey() + "': fill in the Auth and Access Token URLs from "
-                            + s.path("openIdConnectUrl").asText("the discovery document"));
                 }
                 default -> warnings.add("Security scheme '" + e.getKey() + "' of type " + type + " is not supported");
             }

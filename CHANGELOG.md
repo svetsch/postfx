@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+- Pretty layout for XML as well as JSON: XML responses are indented in the Pretty view (and in the runner and Markdown exports), **Beautify** formats XML request bodies; attribute order, namespaces, comments and CDATA are preserved, DTDs / external entities are refused
+- **Markdown test document** export for a collection or folder: summary table, configuration, one test case per request with the request details and the expected results (checks and `pm.test` names) as a checklist, extracted values; secrets masked. After a run, a Markdown **test report** adds the actual results. Also on the command line (`export-md`, `run --reporter-md`)
+- New look: design tokens for light and dark themes, flat buttons and inputs with accent focus rings, underline tabs inside editors and document tabs for open items, method and URL joined in one field with a coloured method, orange-tinted selection, roomier lists and trees, thin scroll bars, status pill, themed dialogs and menus, refined code colours
+- **OpenID Connect** auth type: discovery from the issuer or `.well-known/openid-configuration` URL (endpoints, client authentication, PKCE, scopes), `openid` scope, nonce / issuer / audience checks on the ID token, decoded ID token claims, UserInfo call, option to send the ID token; automatic discovery before token requests (app, runner, CLI); OpenAPI `openIdConnect` schemes imported as OpenID Connect; Postman export as OAuth 2.0; Java export reads the token endpoint from the discovery document
+- The response body is shown after every send (it used to switch to Test Results or Console on failures); new setting **After sending, show**: response body, test results, console, headers, automatic or keep the last tab
+- Fix: the "</> Code" export dialog now uses its whole height for the code, also when it is resized
+
 ## 0.6.1
 - Application icon: window title bars, welcome page, About box, and the Windows / macOS / Linux native launchers
 

@@ -10,7 +10,7 @@ An API client and test runner built with **Java 21 + OpenJFX**, compatible with 
 - **No-code checks and extractors**: assert on status / time / headers / JSON paths / body, and extract response values into variables to chain requests. Right-click a value in the response JSON tree to create them.
 - **Runner (test chains)**: ordered selection, iterations, CSV/JSON data files, delay, stop on failure, `setNextRequest` loops; JUnit XML / JSON / text reports.
 - **Import**: Postman collection v2.0/v2.1, environments and globals, OpenAPI 3.x and Swagger 2.0 (JSON/YAML, from a file or a URL), Insomnia v4, HAR, cURL. OpenAPI imports generate example bodies, status checks and JSON schema tests.
-- **Export**: Postman v2.1 (checks are converted to script code and restored on re-import), and **Java tests** (JUnit 5 + REST Assured, single class or complete Maven project).
+- **Export**: Postman v2.1 (checks are converted to script code and restored on re-import), **Java tests** (JUnit 5 + REST Assured, single class or complete Maven project) and **Markdown test documents** (test plan with expected results, or test report with actual results).
 - **Command line** for CI, **help** window with a full guide, snippet library, example collection, light and dark themes, About box with version and commit.
 
 ## Build and run
@@ -48,6 +48,8 @@ postfx-cli run openapi.yaml --env-var baseUrl=http://localhost:8080 --bail
 postfx-cli run collection.json -d data.csv -n 3 --folder "Smoke tests"
 postfx-cli convert openapi.yaml -o api.postman_collection.json
 postfx-cli export-java collection.json -o ./api-tests --package com.acme.tests -e dev.postman_environment.json
+postfx-cli export-md collection.json -o test-plan.md -e dev.postman_environment.json   # Markdown test document
+postfx-cli run collection.json --reporter-md test-report.md                         # with actual results
 postfx-cli --version
 ```
 
@@ -82,8 +84,8 @@ mvn exec:java -Dexec.classpathScope=test -Dexec.mainClass=io.postfx.UiSmoke -Dex
 To publish a release, set the version in `pom.xml`, add a section to `CHANGELOG.md`, then push a matching tag:
 
 ```bash
-git tag v0.6.1
-git push origin v0.6.1
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
 The workflow checks that the tag matches the pom version and creates the GitHub Release with the release notes from the changelog and the Windows native archive (`postfx-<version>-windows-x64.zip`).

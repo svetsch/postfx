@@ -28,6 +28,7 @@ public class BodyEditor extends BorderPane {
     private final ToggleGroup modes = new ToggleGroup();
     private final ComboBox<String> language = new ComboBox<>();
     private final Button beautify = new Button("Beautify");
+    private final Label beautifyStatus = new Label();
     private final CodeEditor raw = new CodeEditor("json");
     private final KeyValueTable urlencoded = new KeyValueTable(false, true);
     private final KeyValueTable formdata = new KeyValueTable(true, true);
@@ -52,10 +53,11 @@ public class BodyEditor extends BorderPane {
         }
         language.getItems().addAll("json", "text", "xml", "html", "javascript");
         language.setTooltip(new Tooltip("Sets the default Content-Type header"));
-        beautify.setTooltip(new Tooltip("Pretty print the JSON body"));
+        beautify.setTooltip(new Tooltip("Pretty print the JSON or XML body"));
         Region grow = new Region();
         HBox.setHgrow(grow, Priority.ALWAYS);
-        bar.getChildren().addAll(grow, language, beautify);
+        beautifyStatus.getStyleClass().add("fail");
+        bar.getChildren().addAll(grow, beautifyStatus, language, beautify);
         setTop(bar);
         none.getStyleClass().add("hint");
 
@@ -90,13 +92,14 @@ public class BodyEditor extends BorderPane {
         });
         language.valueProperty().addListener((o, a, b) -> {
             raw.setLanguage(b);
-            beautify.setDisable(!"json".equals(b));
+            beautify.setDisable(!"json".equals(b) && !"xml".equals(b));
+            beautifyStatus.setText("");
             if (!loading && b != null) {
                 body.rawLanguage = b;
                 onChange.run();
             }
         });
-        beautify.setOnAction(e -> raw.setText(JsonUtil.prettyOrSame(raw.getText())));
+        beautify.setOnAction(e -> beautify());
         raw.onChange(t -> { if (!loading) { body.raw = t; onChange.run(); } });
         gqlQuery.onChange(t -> { if (!loading) { body.graphqlQuery = t; onChange.run(); } });
         gqlVars.onChange(t -> { if (!loading) { body.graphqlVariables = t; onChange.run(); } });
@@ -106,6 +109,20 @@ public class BodyEditor extends BorderPane {
 
         content.getChildren().addAll(none, raw, urlencoded, formdata, gql, binaryBox);
         setCenter(content);
+    }
+
+    /** Pretty prints the raw body as JSON or XML; tells the user when it is not well-formed. */
+    private void beautify() {
+        String text = raw.getText();
+        if (text == null || text.isBlank()) return;
+        boolean xml = "xml".equals(language.getValue());
+        boolean valid = xml ? io.postfx.engine.XmlUtil.tryParse(text) != null : JsonUtil.tryParse(text) != null;
+        if (!valid) {
+            beautifyStatus.setText(xml ? "Not well-formed XML" : "Not valid JSON");
+            return;
+        }
+        beautifyStatus.setText("");
+        raw.setText(xml ? io.postfx.engine.XmlUtil.prettyOrSame(text) : JsonUtil.prettyOrSame(text));
     }
 
     private void show(BodyMode m) {

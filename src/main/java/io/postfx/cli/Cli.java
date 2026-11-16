@@ -56,8 +56,11 @@ public final class Cli {
                   -k, --insecure                       do not verify SSL certificates
                   --reporter-junit <file>              write a JUnit XML report
                   --reporter-json <file>               write a JSON report
+                  --reporter-md <file>                 write a Markdown test report
                   --export-environment <file>          save the environment after the run
               postfx convert <file> -o <postman.json>  convert any supported format to a Postman v2.1 collection
+              postfx export-md <file> -o <doc.md> [-e env] [--folder name] [--no-scripts]
+                                                       write a Markdown test document (requests and expected results)
               postfx export-java <file> -o <dir> [--package p] [--class C] [-e env]
                                                        generate a Maven project with JUnit 5 + REST Assured tests
 
@@ -78,6 +81,7 @@ public final class Cli {
                 case "run" -> run(args);
                 case "convert" -> convert(args);
                 case "export-java" -> exportJava(args);
+                case "export-md" -> exportMarkdown(args);
                 default -> {
                     System.err.println("Unknown command: " + args[0] + "\n");
                     OUT.print(USAGE);
@@ -119,7 +123,7 @@ public final class Cli {
         List<KeyValue> globals = new ArrayList<>();
         RunOptions opts = new RunOptions();
         Settings settings = new Settings();
-        String folder = null, junit = null, json = null, exportEnv = null;
+        String folder = null, junit = null, json = null, exportEnv = null, markdown = null;
         List<String> envVars = new ArrayList<>();
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
@@ -135,6 +139,7 @@ public final class Cli {
                 case "-k", "--insecure" -> settings.verifySsl = false;
                 case "--reporter-junit" -> junit = value(args, i++);
                 case "--reporter-json" -> json = value(args, i++);
+                case "--reporter-md" -> markdown = value(args, i++);
                 case "--export-environment" -> exportEnv = value(args, i++);
                 default -> {
                     if (args[i].startsWith("-")) throw new IllegalArgumentException("Unknown option " + args[i]);
@@ -200,6 +205,14 @@ public final class Cli {
         report.errors.forEach(e -> OUT.println("! " + e));
         if (junit != null) ReportWriter.writeJUnit(report, Path.of(junit));
         if (json != null) ReportWriter.writeJson(report, Path.of(json));
+        if (markdown != null) {
+            io.postfx.io.MarkdownExporter.Options mo = new io.postfx.io.MarkdownExporter.Options();
+            mo.environment = env;
+            mo.globals = globals;
+            mo.report = report;
+            Folder scopeFolder = folder == null ? null : (Folder) findFolder(collection, folder);
+            Files.writeString(Path.of(markdown), io.postfx.io.MarkdownExporter.generate(collection, scopeFolder, mo), StandardCharsets.UTF_8);
+        }
         if (exportEnv != null) Files.writeString(Path.of(exportEnv), JsonUtil.toPrettyJson(PostmanExporter.exportEnvironment(env)));
         return report.success() ? 0 : 1;
     }
@@ -227,6 +240,30 @@ public final class Cli {
         warnings.forEach(w -> OUT.println("warning: " + w));
         Files.writeString(Path.of(out), JsonUtil.toPrettyJson(PostmanExporter.exportCollection(c)), StandardCharsets.UTF_8);
         OUT.println("Wrote " + out + " (" + Items.flatten(c).size() + " requests)");
+        return 0;
+    }
+
+    static int exportMarkdown(String[] args) throws Exception {
+        String in = null, out = null, folder = null;
+        io.postfx.io.MarkdownExporter.Options o = new io.postfx.io.MarkdownExporter.Options();
+        for (int i = 1; i < args.length; i++) {
+            switch (args[i]) {
+                case "-o", "--output" -> out = value(args, i++);
+                case "-e", "--environment" -> o.environment = loadEnvironment(value(args, i++));
+                case "--folder" -> folder = value(args, i++);
+                case "--no-scripts" -> o.includeScripts = false;
+                default -> in = args[i];
+            }
+        }
+        if (in == null || out == null) throw new IllegalArgumentException("Usage: postfx export-md <file> -o <doc.md>");
+        Collection c = loadCollection(in, new ArrayList<>());
+        Folder scope = null;
+        if (folder != null) {
+            scope = (Folder) findFolder(c, folder);
+            if (scope == null) throw new IllegalArgumentException("Folder not found: " + folder);
+        }
+        Files.writeString(Path.of(out), io.postfx.io.MarkdownExporter.generate(c, scope, o), StandardCharsets.UTF_8);
+        OUT.println("Wrote " + out + " (" + Items.flatten(scope == null ? c : scope).size() + " test cases)");
         return 0;
     }
 

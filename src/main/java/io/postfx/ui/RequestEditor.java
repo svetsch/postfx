@@ -105,6 +105,7 @@ public class RequestEditor extends BorderPane {
         split.setDividerPositions(0.48);
         setCenter(split);
 
+        response.setTabPreference(() -> ctx.workspace.settings.responseTab);
         response.setOnAddCheck(this::addCheckFromResponse);
         response.setOnExtract(this::extractFromResponse);
         ctx.activeEnvironment.addListener((o, a, b) -> updateResolved());
@@ -154,12 +155,25 @@ public class RequestEditor extends BorderPane {
         Tooltip urlTip = new Tooltip();
         url.setTooltip(urlTip);
         url.setOnMouseEntered(e -> urlTip.setText(variablesSummary(url.getText())));
-        HBox bar = new HBox(6, method, url, send);
+        // method + URL look like one field, Send next to it
+        HBox urlBar = new HBox(0, method, url);
+        urlBar.getStyleClass().add("url-bar");
+        urlBar.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(urlBar, Priority.ALWAYS);
+        method.valueProperty().addListener((o, a, b) -> colorMethod());
+        HBox bar = new HBox(8, urlBar, send);
         bar.setAlignment(Pos.CENTER_LEFT);
         resolved.getStyleClass().add("resolved-url");
-        VBox header = new VBox(6, top, bar, resolved);
-        header.setPadding(new Insets(8, 10, 4, 10));
+        VBox header = new VBox(8, top, bar, resolved);
+        header.getStyleClass().add("request-header");
         setTop(header);
+    }
+
+    /** Colours the method selector like the method badges of the tree. */
+    private void colorMethod() {
+        method.getStyleClass().removeIf(c -> c.startsWith("m-"));
+        String m = method.getValue();
+        if (m != null) method.getStyleClass().add("m-" + m.toLowerCase());
     }
 
     private void buildTabs() {
@@ -199,6 +213,7 @@ public class RequestEditor extends BorderPane {
     private void load() {
         name.setText(item.name);
         method.setValue(item.request.method);
+        colorMethod();
         url.setText(item.request.url);
         reloadParams();
         reloadPathVariables();

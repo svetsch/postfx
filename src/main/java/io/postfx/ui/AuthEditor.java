@@ -59,6 +59,8 @@ public class AuthEditor extends ScrollPane {
     private final Button refreshToken = new Button("Refresh");
     private final Button clearToken = new Button("Clear");
     private final Button cancelLogin = new Button("Cancel login");
+    private final TextArea claimsArea = new TextArea();
+    private final Label discoveryInfo = new Label();
     private OAuth2Client pendingClient;
 
     public AuthEditor(boolean allowInherit) {
@@ -147,20 +149,50 @@ public class AuthEditor extends ScrollPane {
                 form.add(new Label("Add to"), 0, 2);
                 form.add(in, 1, 2);
             }
-            case OAUTH2 -> renderOAuth2();
+            case OAUTH2, OIDC -> renderOAuth2();
         }
     }
 
     // ------------------------------------------------------------------ OAuth 2.0
 
+    private boolean isOidc() {
+        return auth.type == AuthType.OIDC;
+    }
+
     private void renderOAuth2() {
         OAuth2 o = auth.oauth2;
-        explanation.setText("PostFX gets an access token from your authorization server and adds it to every request using this auth. "
-                + "Expired tokens are refreshed automatically (refresh token, or a new token for Client Credentials / Password). "
-                + "All fields accept {{variables}}. Configure it on the collection or a folder to share one token between requests.");
         int r = 0;
+        if (isOidc()) {
+            explanation.setText("OpenID Connect signs you in with your identity provider (Keycloak, Entra ID, Auth0, Okta, Google...). "
+                    + "Enter the issuer or its .well-known/openid-configuration URL and click Discover: endpoints and options are filled in. "
+                    + "The \"openid\" scope is always requested and the ID token's nonce, issuer and audience are checked. "
+                    + "Configure it on the collection or a folder to share one token between requests.");
+            r = section(r, "PROVIDER");
+            TextField discovery = new TextField(o.discoveryUrl == null ? "" : o.discoveryUrl);
+            discovery.setPromptText("https://login.example.com/realms/demo   or   .../.well-known/openid-configuration");
+            discovery.textProperty().addListener((obs, a, b) -> {
+                o.discoveryUrl = b;
+                onChange.run();
+            });
+            Button discover = new Button("Discover");
+            discover.setTooltip(new Tooltip("Read the provider's .well-known/openid-configuration and fill in the endpoints"));
+            discover.setOnAction(e -> runDiscovery());
+            HBox.setHgrow(discovery, Priority.ALWAYS);
+            HBox discoveryBox = new HBox(8, discovery, discover);
+            form.add(new Label("Discovery URL"), 0, r);
+            form.add(discoveryBox, 1, r++);
+            discoveryInfo.setWrapText(true);
+            discoveryInfo.getStyleClass().setAll("label", "hint");
+            discoveryInfo.setText(o.issuer == null || o.issuer.isBlank() ? "Not discovered yet"
+                    : "Issuer " + o.issuer + (o.userInfoUrl == null || o.userInfoUrl.isBlank() ? "" : " · UserInfo " + o.userInfoUrl));
+            form.add(discoveryInfo, 1, r++);
+        } else {
+            explanation.setText("PostFX gets an access token from your authorization server and adds it to every request using this auth. "
+                    + "Expired tokens are refreshed automatically (refresh token, or a new token for Client Credentials / Password). "
+                    + "All fields accept {{variables}}. Configure it on the collection or a folder to share one token between requests.");
+        }
         r = section(r, "CURRENT TOKEN");
-        form.add(new Label("Access Token"), 0, r);
+        form.add(topLabel("Access Token"), 0, r);
         tokenArea.textProperty().removeListener(tokenListener);
         tokenArea.setText(o.accessToken);
         tokenArea.textProperty().addListener(tokenListener);
@@ -171,6 +203,33 @@ public class AuthEditor extends ScrollPane {
         form.add(buttons, 1, r++);
         form.add(oauthStatus, 1, r++);
         showToken();
+        if (isOidc()) {
+            form.add(topLabel("ID Token claims"), 0, r);
+            claimsArea.setEditable(false);
+            claimsArea.setPrefRowCount(6);
+            claimsArea.getStyleClass().add("mono");
+            claimsArea.setPromptText("Claims of the ID token appear here after sign-in (decoded, signature not verified)");
+            form.add(claimsArea, 1, r++);
+            Button userInfo = new Button("User info");
+            userInfo.setTooltip(new Tooltip("Call the provider's UserInfo endpoint with the access token"));
+            userInfo.setOnAction(e -> showUserInfo());
+            ComboBox<String> send = combo(List.of("access_token", "id_token"), o.tokenToSend, v -> o.tokenToSend = v, new StringConverter<>() {
+                @Override
+                public String toString(String v) {
+                    return "id_token".equals(v) ? "Send the ID token" : "Send the access token";
+                }
+
+                @Override
+                public String fromString(String v) {
+                    return v;
+                }
+            });
+            HBox oidcBox = new HBox(8, send, userInfo);
+            oidcBox.setAlignment(Pos.CENTER_LEFT);
+            form.add(new Label("Token to send"), 0, r);
+            form.add(oidcBox, 1, r++);
+            showClaims();
+        }
 
         r = textRow(r, "Header Prefix", o.headerPrefix, v -> o.headerPrefix = v, "Bearer");
         ComboBox<String> addTo = combo(List.of("header", "query"), o.addTokenTo, v -> {
@@ -260,6 +319,47 @@ public class AuthEditor extends ScrollPane {
         onChange.run();
     };
 
+    private void showClaims() {
+        com.fasterxml.jackson.databind.JsonNode claims = io.postfx.engine.Jwt.payload(auth.oauth2.idToken);
+        claimsArea.setText(claims == null ? "" : io.postfx.engine.JsonUtil.toPrettyJson(claims));
+    }
+
+    private void runDiscovery() {
+        if (ctx == null) return;
+        OAuth2 o = auth.oauth2;
+        VariableContext vars = variables.get();
+        discoveryInfo.getStyleClass().setAll("label", "hint");
+        discoveryInfo.setText("Reading the discovery document…");
+        ctx.background.submit(() -> {
+            try {
+                String summary = OAuth2Client.forAuth(ctx.http, ctx.workspace.settings, auth).discover(o, vars, m -> {});
+                Platform.runLater(() -> {
+                    render();
+                    onChange.run();
+                    ctx.status.set(summary);
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    discoveryInfo.setText("✘ " + ex.getMessage());
+                    discoveryInfo.getStyleClass().setAll("label", "fail");
+                });
+            }
+        });
+    }
+
+    private void showUserInfo() {
+        if (ctx == null) return;
+        VariableContext vars = variables.get();
+        ctx.background.submit(() -> {
+            try {
+                String body = OAuth2Client.forAuth(ctx.http, ctx.workspace.settings, auth).userInfo(auth.oauth2, vars);
+                Platform.runLater(() -> Dialogs.info("User info", io.postfx.engine.JsonUtil.prettyOrSame(body)));
+            } catch (Exception ex) {
+                Platform.runLater(() -> Dialogs.error("User info", ex.getMessage()));
+            }
+        });
+    }
+
     private void showToken() {
         OAuth2 o = auth.oauth2;
         StringBuilder sb = new StringBuilder();
@@ -290,7 +390,7 @@ public class AuthEditor extends ScrollPane {
         if (ctx == null) return;
         OAuth2 o = auth.oauth2;
         VariableContext vars = variables.get();
-        OAuth2Client client = new OAuth2Client(ctx.http, ctx.workspace.settings);
+        OAuth2Client client = OAuth2Client.forAuth(ctx.http, ctx.workspace.settings, auth);
         pendingClient = client;
         setBusy(true, refresh ? "Refreshing the token…" : o.isInteractive()
                 ? "Complete the login in your browser… (" + OAuth2Client.BROWSER_TIMEOUT_SECONDS / 60 + " min timeout)" : "Requesting a token…");
@@ -303,6 +403,7 @@ public class AuthEditor extends ScrollPane {
                     setBusy(false, "✔ Token received");
                     oauthStatus.getStyleClass().setAll("label", "pass");
                     showToken();
+                    if (isOidc()) render();
                     onChange.run();
                 });
             } catch (Exception ex) {
@@ -348,6 +449,14 @@ public class AuthEditor extends ScrollPane {
     }
 
     // ------------------------------------------------------------------ form helpers
+
+    /** Label aligned with the first line of a multi-line field. */
+    private static Label topLabel(String text) {
+        Label l = new Label(text);
+        GridPane.setValignment(l, javafx.geometry.VPos.TOP);
+        l.setPadding(new Insets(6, 0, 0, 0));
+        return l;
+    }
 
     private int section(int row, String title) {
         Label l = new Label(title);

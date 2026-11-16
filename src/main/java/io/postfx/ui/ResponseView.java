@@ -53,7 +53,11 @@ public class ResponseView extends BorderPane {
     private final ListView<TestResult> tests = new ListView<>();
     private final ListView<ConsoleEntry> console = new ListView<>();
     private final CodeEditor sent = new CodeEditor("text");
+    private final Tab bodyTab = new Tab("Body");
+    private final Tab headersTab = new Tab("Headers");
     private final Tab testsTab = new Tab("Test Results");
+    /** Which tab to show after a request (Settings › After sending, show). */
+    private java.util.function.Supplier<String> tabPreference = () -> io.postfx.model.Settings.RESPONSE_TAB_BODY;
     private final Tab consoleTab = new Tab("Console");
     private final TabPane tabs = new TabPane();
     private final StackPane center = new StackPane();
@@ -97,7 +101,7 @@ public class ResponseView extends BorderPane {
         title.getStyleClass().add("section-title");
         HBox bar = new HBox(12, title, status, time, size, grow, copy, save);
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(4, 8, 4, 8));
+        bar.getStyleClass().add("response-header");
         setTop(bar);
 
         // body
@@ -183,12 +187,12 @@ public class ResponseView extends BorderPane {
             }
         });
 
-        Tab body = new Tab("Body", bodyPane);
-        Tab hdr = new Tab("Headers", headers);
+        bodyTab.setContent(bodyPane);
+        headersTab.setContent(headers);
         testsTab.setContent(tests);
         consoleTab.setContent(console);
         Tab req = new Tab("Request", sent);
-        tabs.getTabs().addAll(body, hdr, testsTab, consoleTab, req);
+        tabs.getTabs().addAll(bodyTab, headersTab, testsTab, consoleTab, req);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.setVisible(false);
         center.getChildren().addAll(placeholder, tabs, progress);
@@ -242,7 +246,7 @@ public class ResponseView extends BorderPane {
             raw.setText(res.error);
             tree.setJson(null);
             headers.getItems().clear();
-            tabs.getSelectionModel().select(consoleTab);
+            selectTab(r, failed);
             return;
         }
         status.setText(res.status + " " + res.statusText);
@@ -252,13 +256,33 @@ public class ResponseView extends BorderPane {
         headers.getItems().setAll(res.headers);
         String ct = res.contentType();
         JsonNode json = res.json();
-        String lang = json != null ? "json" : ct.contains("xml") || ct.contains("html") ? "xml" : "text";
+        boolean xml = json == null && (ct.contains("xml") || io.postfx.engine.XmlUtil.looksLikeXml(res.body)) && !ct.contains("html");
+        String lang = json != null ? "json" : xml || ct.contains("html") ? "xml" : "text";
         pretty.setLanguage(lang);
-        pretty.setText(json != null && json.isContainerNode() ? JsonUtil.toPrettyJson(json) : res.body);
+        if (json != null && json.isContainerNode()) pretty.setText(JsonUtil.toPrettyJson(json));
+        else if (xml) pretty.setText(io.postfx.engine.XmlUtil.prettyOrSame(res.body));
+        else pretty.setText(res.body);
         raw.setText(res.body);
         tree.setJson(json);
-        if (!r.errors.isEmpty()) tabs.getSelectionModel().select(consoleTab);
-        else if (failed > 0) tabs.getSelectionModel().select(testsTab);
+        selectTab(r, failed);
+    }
+
+    public void setTabPreference(java.util.function.Supplier<String> preference) {
+        this.tabPreference = preference;
+    }
+
+    /** Shows the tab chosen in the settings; "auto" jumps to script errors and failed tests first. */
+    private void selectTab(ExecutionResult r, long failed) {
+        String pref = tabPreference.get();
+        Tab target = switch (pref == null ? io.postfx.model.Settings.RESPONSE_TAB_BODY : pref) {
+            case io.postfx.model.Settings.RESPONSE_TAB_KEEP -> null;
+            case io.postfx.model.Settings.RESPONSE_TAB_TESTS -> testsTab;
+            case io.postfx.model.Settings.RESPONSE_TAB_CONSOLE -> consoleTab;
+            case io.postfx.model.Settings.RESPONSE_TAB_HEADERS -> headersTab;
+            case io.postfx.model.Settings.RESPONSE_TAB_AUTO -> !r.errors.isEmpty() ? consoleTab : failed > 0 ? testsTab : bodyTab;
+            default -> bodyTab;
+        };
+        if (target != null) tabs.getSelectionModel().select(target);
     }
 
     static String describe(ResolvedRequest r) {

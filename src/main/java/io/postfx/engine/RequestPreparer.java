@@ -105,11 +105,11 @@ public final class RequestPreparer {
                 if ("query".equalsIgnoreCase(auth.apiIn)) r.url = UrlUtil.appendQueryParam(r.url, k, v);
                 else r.setHeaderIfAbsent(k, v);
             }
-            case OAUTH2 -> {
+            case OAUTH2, OIDC -> {
                 var o = auth.oauth2;
-                String token = o == null ? "" : vars.resolve(o.accessToken);
+                String token = o == null ? "" : vars.resolve(o.tokenForRequests());
                 if (token == null || token.isBlank()) {
-                    r.warnings.add("OAuth 2.0: no access token (Auth tab › Get New Access Token)");
+                    r.warnings.add(auth.type.label + ": no token (Auth tab › Get New Access Token)");
                     return;
                 }
                 if ("query".equalsIgnoreCase(o.addTokenTo)) {
